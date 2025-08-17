@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "moduleResolution": "bundler",
+    "types": ["svelte", "node"],
+    "lib": ["ES2019", "DOM"],
+    "target": "ES2019",
+    "baseUrl": ".",
+    "paths": {
+      "$lib/*": ["src/lib/*"]
+    }
+  }
+}

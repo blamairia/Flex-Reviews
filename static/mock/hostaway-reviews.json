@@ -1,0 +1,41 @@
+[
+  {
+    "id": "7453",
+    "listingName": "Cozy Downtown Loft",
+    "overall": 9,
+    "reviewCategory": [
+      { "category": "Cleanliness", "rating": 10 },
+      { "category": "Communication", "rating": 9 }
+    ],
+    "submittedAt": "2024-05-10T12:00:00",
+    "guestName": "Alice Lee",
+    "publicReview": "Great location and super clean. Would stay again!",
+    "type": "guest-to-host"
+  },
+  {
+    "id": "7454",
+    "listingName": "Cozy Downtown Loft",
+    "overall": null,
+    "reviewCategory": [
+      { "category": "Cleanliness", "rating": 8 },
+      { "category": "Location", "rating": 9 }
+    ],
+    "submittedAt": "2024-06-15T08:30:00",
+    "guestName": "Bob Marley",
+    "publicReview": "Nice place, a bit noisy at night but overall good stay.",
+    "type": "guest-to-host"
+  },
+  {
+    "id": "8120",
+    "listingName": "Seaside Villa",
+    "overall": 10,
+    "reviewCategory": [
+      { "category": "Cleanliness", "rating": 10 },
+      { "category": "Check-in", "rating": 10 }
+    ],
+    "submittedAt": "2024-07-01T09:00:00",
+    "guestName": "Charlie Brown",
+    "publicReview": "Absolutely stunning views and perfect for families.",
+    "type": "guest-to-host"
+  }
+]

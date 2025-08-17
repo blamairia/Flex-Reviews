@@ -1,0 +1,49 @@
+{
+  "name": "reviews-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "svelte-kit build",
+    "preview": "svelte-kit preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier -w .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/lib/db/seed.ts"
+  },
+  "dependencies": {
+    "@skeletonlabs/skeleton": "*",
+    "@sveltejs/kit": "*",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "autoprefixer": "*",
+    "better-sqlite3": "*",
+    "drizzle-orm": "*",
+    "lucide-svelte": "^0.427.0",
+    "postcss": "*",
+    "svelte": "*",
+    "svelte-apexcharts": "^1.0.2",
+    "tailwindcss": "*",
+    "vite": "*"
+  },
+  "devDependencies": {
+    "@skeletonlabs/tw-plugin": "*",
+    "@sveltejs/adapter-auto": "*",
+    "@types/better-sqlite3": "*",
+    "@types/node": "*",
+    "drizzle-kit": "*",
+    "eslint": "*",
+    "eslint-config-prettier": "*",
+    "eslint-plugin-svelte": "*",
+    "prettier": "*",
+    "prettier-plugin-svelte": "*",
+    "svelte-check": "*",
+    "tslib": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}
