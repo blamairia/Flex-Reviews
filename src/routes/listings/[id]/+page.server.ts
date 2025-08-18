@@ -46,16 +46,9 @@ export const load = async ({ params, fetch }: any) => {
         if (reviewsData.success && reviewsData.reviews) {
           // Filter reviews for this specific property
           const allReviews = reviewsData.reviews;
-          console.log(`🔍 Total reviews from API: ${allReviews.length}`);
-          console.log(`🔍 Sample review listingIds: ${allReviews.slice(0, 3).map((r: any) => r.listingId).join(', ')}`);
-          console.log(`🔍 Looking for listingId: ${id} (type: ${typeof id})`);
           
           propertyReviews = allReviews.filter((review: any) => {
-            const matches = review.listingId === id || review.listingId === parseInt(id) || review.listingId.toString() === id;
-            if (matches) {
-              console.log(`✅ Found matching review: ${review.id} for listingId: ${review.listingId}`);
-            }
-            return matches;
+            return review.listingId === id || review.listingId === parseInt(id) || review.listingId.toString() === id;
           });
           
           console.log(`🔍 Found ${propertyReviews.length} reviews for property ${id}`);
@@ -129,12 +122,6 @@ export const load = async ({ params, fetch }: any) => {
     }
     
     console.log(`✅ Successfully loaded property details for ${property.name || property.id}`);
-    console.log(`🐛 Returning data structure:`, {
-      property: property.name,
-      reviewsCount: transformedReviews.length,
-      statsAverage: (reviewStats as any).averageRating || 'N/A',
-      insightsKeys: Object.keys(insightsData.status === 'ok' ? insightsData.result : {})
-    });
     
     return { 
       property,

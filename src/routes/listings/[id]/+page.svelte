@@ -17,12 +17,20 @@
 
   let showAllReviews = false;
   
-  // Reactive computations
+  // Reactive computations  
   $: property = data.property || {};
   $: reviews = data.reviews?.reviews || [];
   $: reviewStats = data.reviews?.stats || {};
   $: insights = data.insights || {};
   $: displayedReviews = showAllReviews ? reviews : reviews.slice(0, 6);
+  
+  // Calculate live rating from actual reviews
+  $: calculatedRating = reviews.length > 0 
+    ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length 
+    : property.summary?.avgRating || property.avgRating || 0;
+  
+  $: approvedReviews = reviews.filter(r => r.status === 'approved');
+  $: approvalRate = reviews.length > 0 ? (approvedReviews.length / reviews.length) * 100 : 0;
   
   // Helper functions
   function formatDate(dateString: string): string {
@@ -201,8 +209,8 @@
                     </svg>
                     <span class="text-sm font-medium text-slate-600">Rating</span>
                   </div>
-                  <div class="text-2xl font-bold text-slate-900">{(property.summary?.avgRating || property.avgRating || 0).toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(property.summary?.avgRating || property.avgRating || 0)}</div>
+                  <div class="text-2xl font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
                 </div>
                 
                 <div class="bg-slate-50 rounded-xl p-4">
@@ -212,8 +220,8 @@
                     </svg>
                     <span class="text-sm font-medium text-slate-600">Reviews</span>
                   </div>
-                  <div class="text-2xl font-bold text-slate-900">{property.summary?.reviews || property.reviewCount || reviews.length || 0}</div>
-                  <div class="text-xs text-slate-500">{Math.round((property.summary?.approvedPct || 0) * 100)}% approved</div>
+                  <div class="text-2xl font-bold text-slate-900">{reviews.length}</div>
+                  <div class="text-xs text-slate-500">{Math.round(approvalRate)}% approved ({approvedReviews.length} of {reviews.length})</div>
                 </div>
               </div>
               
