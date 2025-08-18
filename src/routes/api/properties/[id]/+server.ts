@@ -16,11 +16,47 @@ interface HostawayListing {
   personCapacity: number;
   bedroomsNumber: number;
   bathroomsNumber: number;
+  lat: number;
+  lng: number;
+  zipcode: string;
+  state: string;
+  countryCode: string;
+  timeZone?: string;
+  currency?: string;
+  cleaningFee: number;
+  // Policies and Rules
+  checkInTime?: string;
+  checkOutTime?: string;
+  cancellationPolicyId?: number;
+  cancellationPolicy?: string;
+  houseRules?: string;
+  smokingAllowed?: boolean;
+  petsAllowed?: boolean;
+  partiesEventsAllowed?: boolean;
+  securityDepositRequired?: boolean;
+  securityDepositAmount?: number;
+  minimumStay?: number;
+  minimumStayLongTerm?: number;
+  // URLs and External Links
   airbnbListingUrl?: string;
   vrboListingUrl?: string;
   bookingEngineUrls?: string[];
-  listingImages?: Array<{ url: string; caption: string; sortOrder: number }>;
-  listingAmenities?: Array<{ amenityId: number }>;
+  // Comprehensive Data Arrays
+  listingImages?: Array<{ 
+    id: number;
+    url: string; 
+    caption: string; 
+    sortOrder: number 
+  }>;
+  listingAmenities?: Array<{ 
+    id: number;
+    amenityId: number;
+    amenityName: string;
+  }>;
+  listingTags?: Array<{
+    id: number;
+    name: string;
+  }>;
 }
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -40,14 +76,17 @@ export const GET: RequestHandler = async ({ params }) => {
     let property: ListingWithStats | null = await ListingService.getListingById(id);
     let hostawayListing: HostawayListing | null = null;
 
-    // If not found locally, try to fetch from Hostaway
+    // If not found locally, try to fetch from Hostaway with comprehensive details
     if (!property) {
-      console.log('🔄 Property not found locally, fetching from Hostaway...');
+      console.log('🔄 Property not found locally, fetching comprehensive details from Hostaway...');
       try {
-        const hostawayResponse = await HostawayService.getListing(parseInt(id));
+        const hostawayResponse = await HostawayService.getListingDetails(parseInt(id));
         if (hostawayResponse && hostawayResponse.result) {
           hostawayListing = hostawayResponse.result;
-          console.log('✅ Found listing in Hostaway');
+          console.log('✅ Found listing in Hostaway with comprehensive details');
+          console.log(`📸 Images found: ${hostawayListing.listingImages?.length || 0}`);
+          console.log(`🏠 Amenities found: ${hostawayListing.listingAmenities?.length || 0}`);
+          console.log(`📍 Location: ${hostawayListing.lat}, ${hostawayListing.lng}`);
           
           // Create a mock local property from Hostaway data
           property = {
@@ -63,6 +102,20 @@ export const GET: RequestHandler = async ({ params }) => {
         }
       } catch (error) {
         console.warn('⚠️ Failed to fetch from Hostaway:', error);
+      }
+    } else {
+      // If we have a local property, still try to get comprehensive Hostaway data for enhancement
+      console.log('🔗 Enhancing local property with comprehensive Hostaway data...');
+      try {
+        const hostawayResponse = await HostawayService.getListingDetails(parseInt(id));
+        if (hostawayResponse && hostawayResponse.result) {
+          hostawayListing = hostawayResponse.result;
+          console.log('✅ Enhanced with comprehensive Hostaway data');
+          console.log(`📸 Images found: ${hostawayListing.listingImages?.length || 0}`);
+          console.log(`🏠 Amenities found: ${hostawayListing.listingAmenities?.length || 0}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to enhance with Hostaway data:', error);
       }
     }
 
@@ -101,15 +154,76 @@ export const GET: RequestHandler = async ({ params }) => {
           reviews: reviews.length,
           approvedPct: Math.round(approvedPct * 100) / 100
         },
-        // Additional Hostaway data if available
+        // Comprehensive Hostaway data if available
         ...(hostawayListing && {
           hostaway: {
+            // Basic Property Info
             price: hostawayListing.price,
             personCapacity: hostawayListing.personCapacity,
             bedroomsNumber: hostawayListing.bedroomsNumber,
             bathroomsNumber: hostawayListing.bathroomsNumber,
+            cleaningFee: hostawayListing.cleaningFee,
+            
+            // Location Details for Maps Integration
+            location: {
+              lat: hostawayListing.lat,
+              lng: hostawayListing.lng,
+              address: hostawayListing.address,
+              city: hostawayListing.city,
+              state: hostawayListing.state,
+              country: hostawayListing.country,
+              countryCode: hostawayListing.countryCode,
+              zipcode: hostawayListing.zipcode,
+              timeZone: hostawayListing.timeZone
+            },
+            
+            // Policies & Rules
+            policies: {
+              checkInTime: hostawayListing.checkInTime || '3:00 PM',
+              checkOutTime: hostawayListing.checkOutTime || '10:00 AM',
+              smokingAllowed: hostawayListing.smokingAllowed || false,
+              petsAllowed: hostawayListing.petsAllowed || false,
+              partiesEventsAllowed: hostawayListing.partiesEventsAllowed || false,
+              securityDepositRequired: hostawayListing.securityDepositRequired || false,
+              securityDepositAmount: hostawayListing.securityDepositAmount,
+              minimumStay: hostawayListing.minimumStay,
+              minimumStayLongTerm: hostawayListing.minimumStayLongTerm,
+              houseRules: hostawayListing.houseRules,
+              cancellationPolicy: hostawayListing.cancellationPolicy
+            },
+            
+            // All Images for Gallery
+            images: hostawayListing.listingImages?.map(img => ({
+              id: img.id,
+              url: img.url,
+              caption: img.caption,
+              sortOrder: img.sortOrder
+            })) || [],
+            
+            // All Amenities
+            amenities: hostawayListing.listingAmenities?.map(amenity => ({
+              id: amenity.id,
+              amenityId: amenity.amenityId,
+              name: amenity.amenityName
+            })) || [],
+            
+            // Tags and Categories
+            tags: hostawayListing.listingTags?.map(tag => ({
+              id: tag.id,
+              name: tag.name
+            })) || [],
+            
+            // External Platform URLs
+            externalUrls: {
+              airbnb: hostawayListing.airbnbListingUrl,
+              vrbo: hostawayListing.vrboListingUrl,
+              bookingEngine: hostawayListing.bookingEngineUrls
+            },
+            
+            // Counts for UI Display
             amenitiesCount: hostawayListing.listingAmenities?.length || 0,
-            imagesCount: hostawayListing.listingImages?.length || 0
+            imagesCount: hostawayListing.listingImages?.length || 0,
+            tagsCount: hostawayListing.listingTags?.length || 0
           }
         })
       }

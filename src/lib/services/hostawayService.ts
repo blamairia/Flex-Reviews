@@ -26,6 +26,27 @@ export interface HostawayListing {
   bathroomsNumber: number;
   cleaningFee: number;
   averageReviewRating: number;
+  // Policies and Rules
+  checkInTime?: string;
+  checkOutTime?: string;
+  cancellationPolicyId?: number;
+  cancellationPolicy?: string;
+  houseRules?: string;
+  smokingAllowed?: boolean;
+  petsAllowed?: boolean;
+  partiesEventsAllowed?: boolean;
+  securityDepositRequired?: boolean;
+  securityDepositAmount?: number;
+  // Minimum stay policies
+  minimumStay?: number;
+  minimumStayLongTerm?: number;
+  // Additional Details
+  bookingEngineUrls?: string[];
+  airbnbListingUrl?: string;
+  vrboListingUrl?: string;
+  timeZone?: string;
+  currency?: string;
+  // Amenities and Images
   listingAmenities: Array<{
     id: number;
     amenityId: number;
@@ -41,8 +62,6 @@ export interface HostawayListing {
     id: number;
     name: string;
   }>;
-  airbnbListingUrl?: string;
-  vrboListingUrl?: string;
   insertedOn: string;
   updatedOn?: string;
 }
@@ -203,7 +222,7 @@ export class HostawayService {
   }
 
   /**
-   * Fetch a single listing by ID
+   * Fetch a single listing by ID with comprehensive details
    */
   static async getListing(id: number | string, params: {
     attachObjects?: string[];
@@ -213,15 +232,49 @@ export class HostawayService {
     
     if (params.includeResources) url.searchParams.set('includeResources', '1');
     
+    // Default to include all important objects for comprehensive details
+    const defaultAttachObjects = [
+      'listingImages', 
+      'listingAmenities',
+      'listingTags',
+      'cancellationPolicy',
+      'listingRates'
+    ];
+    
+    const attachObjects = params.attachObjects || defaultAttachObjects;
+    
     // Add attach objects
-    if (params.attachObjects && params.attachObjects.length > 0) {
-      params.attachObjects.forEach(obj => {
+    if (attachObjects && attachObjects.length > 0) {
+      attachObjects.forEach(obj => {
         url.searchParams.append('attachObjects[]', obj);
       });
     }
 
+    console.log(`🔍 Fetching comprehensive listing details for ID: ${id}`);
+    console.log(`📎 Attached objects: ${attachObjects.join(', ')}`);
+
     const endpoint = url.pathname + url.search;
     return this.makeRequest<{ status: string; result: HostawayListing }>(endpoint);
+  }
+
+  /**
+   * Fetch detailed listing information with all available data for property details page
+   */
+  static async getListingDetails(id: number | string): Promise<{ status: string; result: HostawayListing }> {
+    console.log(`🏠 Fetching detailed listing information for property page ID: ${id}`);
+    
+    return this.getListing(id, {
+      attachObjects: [
+        'listingImages',
+        'listingAmenities', 
+        'listingTags',
+        'cancellationPolicy',
+        'listingRates',
+        'listingStatistics',
+        'listingCalendar'
+      ],
+      includeResources: true
+    });
   }
 
   /**
