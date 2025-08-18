@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
 
+  export let data: any;
+
   interface Property {
     id: string;
     slug: string;
@@ -9,6 +11,8 @@
     address: string;
     avgRating: number;
     reviewCount: number;
+    approvedCount: number;
+    approvalRate: number;
     channel: string;
     photo: string;
     status: string;
@@ -23,6 +27,13 @@
     amenitiesCount?: number;
     imagesCount?: number;
     createdAt?: string;
+    // Hostaway nested structure - matches individual listing page
+    hostaway?: {
+      bedroomsNumber?: number;
+      bathroomsNumber?: number;
+      personCapacity?: number;
+      price?: number;
+    };
   }
 
   interface PropertyResponse {
@@ -60,13 +71,23 @@
   let sortOrder: 'asc' | 'desc' = 'desc';
 
   // Derived data for filter options
-  $: cities = [...new Set(properties.map(p => p.city || p.address.split(',')[0]).filter(Boolean))].sort();
-  $: channels = [...new Set(properties.map(p => p.channel))].sort();
-  $: bedroomOptions = [...new Set(properties.map(p => p.bedroomsNumber).filter(b => b !== undefined))].sort((a, b) => (a || 0) - (b || 0));
+  $: cities = [...new Set(properties.map(p => p.city || (p.address ? p.address.split(',')[0] : '')).filter(Boolean))].sort();
+  $: channels = [...new Set(properties.map(p => p.channel).filter(Boolean))].sort();
+  $: bedroomOptions = [...new Set(properties.map(p => p.hostaway?.bedroomsNumber || p.bedroomsNumber).filter(b => b !== undefined && b !== null))].sort((a, b) => (a || 0) - (b || 0));
 
   // Load properties on mount
   onMount(() => {
-    loadProperties();
+    // Use server-side data if available, otherwise load from API
+    if (data.listings && data.listings.length > 0) {
+      properties = data.listings;
+      loading = false;
+      console.log('✅ Using server-side data:', data.listings.length, 'listings');
+      console.log('📊 Sample listing data:', data.listings[0]);
+    } else {
+      console.log('⚠️ No server data, loading from API...');
+      console.log('📄 Server data structure:', data);
+      loadProperties();
+    }
   });
 
   // Reactive filtering and sorting
@@ -80,11 +101,13 @@
       const matchesChannel = filterChannel === 'all' || property.channel === filterChannel;
       
       const matchesBedrooms = filterBedrooms === 'all' || 
-        (property.bedroomsNumber !== undefined && property.bedroomsNumber.toString() === filterBedrooms);
+        ((property.hostaway?.bedroomsNumber || property.bedroomsNumber) !== undefined && 
+         (property.hostaway?.bedroomsNumber || property.bedroomsNumber) !== null &&
+         (property.hostaway?.bedroomsNumber || property.bedroomsNumber).toString() === filterBedrooms);
       
       const matchesCity = filterCity === 'all' || 
         (property.city && property.city === filterCity) ||
-        property.address.toLowerCase().includes(filterCity.toLowerCase());
+        (property.address && property.address.toLowerCase().includes(filterCity.toLowerCase()));
       
       const matchesPriceRange = filterPriceRange === 'all' || (() => {
         const price = property.price || 0;
@@ -278,7 +301,7 @@
       >
         <option value="all">Any Bedrooms</option>
         {#each bedroomOptions as bedrooms}
-          <option value={bedrooms.toString()}>{bedrooms} {bedrooms === 1 ? 'Bedroom' : 'Bedrooms'}</option>
+          <option value={bedrooms?.toString() || ''}>{bedrooms} {bedrooms === 1 ? 'Bedroom' : 'Bedrooms'}</option>
         {/each}
       </select>
 
@@ -488,6 +511,13 @@
         <p class="text-slate-500 mb-6">
           {searchQuery || filterChannel !== 'all' || filterCity !== 'all' ? 'Try adjusting your search or filters' : 'Get started by adding your first property listing'}
         </p>
+        <!-- Debug info -->
+        <div class="text-xs text-slate-400 mb-4">
+          Debug: {properties.length} total properties, {filteredProperties.length} after filtering
+          {#if properties.length > 0}
+            <br/>Sample property: {JSON.stringify(properties[0], null, 2)}
+          {/if}
+        </div>
         {#if !searchQuery && filterChannel === 'all' && filterCity === 'all'}
           <button 
             on:click={() => goto('/listings/new')}
@@ -506,7 +536,7 @@
           <thead class="bg-slate-50/50">
             <tr class="text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
               <th class="px-6 py-4">Property</th>
-              <th class="px-6 py-4">Details</th>
+              <th class="px-6 py-4">Bedrooms</th>
               <th class="px-6 py-4">Channel</th>
               <th class="px-6 py-4">Status</th>
               <th class="px-6 py-4">Rating</th>
@@ -564,35 +594,25 @@
                   </div>
                 </td>
                 <td class="px-6 py-4">
-                  <div class="text-sm space-y-1">
-                    {#if property.bedroomsNumber !== undefined || property.bathroomsNumber !== undefined}
-                      <div class="flex items-center gap-3 text-slate-600">
-                        {#if property.bedroomsNumber !== undefined}
-                          <span class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"/>
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 21v-4a2 2 0 012-2h4a2 2 0 012 2v4"/>
-                            </svg>
-                            {property.bedroomsNumber} bed
-                          </span>
-                        {/if}
-                        {#if property.bathroomsNumber !== undefined}
-                          <span class="flex items-center gap-1">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11"/>
-                            </svg>
-                            {property.bathroomsNumber} bath
-                          </span>
-                        {/if}
-                      </div>
-                    {/if}
-                    {#if property.personCapacity}
-                      <div class="flex items-center gap-1 text-slate-600">
+                  <div class="text-sm">
+                    {#if property.hostaway?.bedroomsNumber !== undefined}
+                      <span class="flex items-center gap-1 text-slate-600">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 21v-4a2 2 0 012-2h4a2 2 0 012 2v4"/>
                         </svg>
-                        {property.personCapacity} guests
-                      </div>
+                        {property.hostaway.bedroomsNumber}
+                      </span>
+                    {:else if property.bedroomsNumber !== undefined}
+                      <span class="flex items-center gap-1 text-slate-600">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 21v-4a2 2 0 012-2h4a2 2 0 012 2v4"/>
+                        </svg>
+                        {property.bedroomsNumber}
+                      </span>
+                    {:else}
+                      <span class="text-slate-400">—</span>
                     {/if}
                   </div>
                 </td>
@@ -607,26 +627,45 @@
                   </span>
                 </td>
                 <td class="px-6 py-4">
-                  <div class="flex items-center gap-1">
-                    <svg class="w-3.5 h-3.5 text-yellow-400 fill-current" viewBox="0 0 24 24">
-                      <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                    </svg>
+                  <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                      {#each Array(5) as _, i}
+                        <svg 
+                          class="w-3.5 h-3.5 {i < Math.floor(property.avgRating || 0) ? 'text-yellow-400 fill-current' : 'text-slate-300'}" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                        </svg>
+                      {/each}
+                    </div>
                     <span class="text-sm font-medium text-slate-900">
                       {(property.avgRating || 0).toFixed(1)}
                     </span>
                   </div>
                 </td>
                 <td class="px-6 py-4">
-                  <div class="flex items-center gap-1 text-sm text-slate-600">
+                  <div class="flex items-center gap-1 text-sm">
                     <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                     </svg>
-                    {(property.reviewCount || 0).toLocaleString()}
+                    <div class="flex flex-col">
+                      <span class="font-medium text-slate-900">
+                        {(property.reviewCount || 0).toLocaleString()}
+                      </span>
+                      {#if property.reviewCount && property.reviewCount > 0}
+                        <span class="text-xs text-slate-500">
+                          {property.approvalRate || 0}% approved
+                        </span>
+                      {/if}
+                    </div>
                   </div>
                 </td>
                 <td class="px-6 py-4">
                   <div class="text-sm font-medium text-slate-900">
-                    {#if property.price}
+                    {#if property.hostaway?.price}
+                      {formatPrice(property.hostaway.price)}
+                      <div class="text-xs text-slate-500">per night</div>
+                    {:else if property.price}
                       {formatPrice(property.price)}
                       <div class="text-xs text-slate-500">per night</div>
                     {:else}
