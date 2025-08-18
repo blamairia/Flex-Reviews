@@ -3,4 +3,5 @@ node_modules
 .vercel
 .drizzle
 .svelte-kit
+.env.local
 data/*.db-journal
