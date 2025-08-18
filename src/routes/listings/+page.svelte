@@ -150,7 +150,7 @@
   }
 
   function handleListingClick(propertyId: string) {
-    goto(`/properties/${propertyId}`);
+    goto(`/listings/${propertyId}`);
   }
   
   function getChannelBadge(channel: string) {
