@@ -1,6 +1,6 @@
-import type { PageServerLoad } from './$types';
+import type { ServerLoad } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async () => {
+export const load: ServerLoad = async () => {
   return {
     title: 'Hostaway API Test Dashboard'
   };

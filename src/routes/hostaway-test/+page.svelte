@@ -201,12 +201,12 @@
   }
 
   async function testPropertyDetails() {
-    const id = propertyId || '101';
+    const id = propertyId || '155613';
     await testAPI(`/api/properties/${id}`);
   }
 
   async function testPropertyMetrics() {
-    const id = propertyId || '101';
+    const id = propertyId || '155613';
     await testAPI(`/api/properties/${id}/metrics/overview`, {
       params: {
         dateFrom,
@@ -217,7 +217,7 @@
   }
 
   async function testPropertyInsights() {
-    const id = propertyId || '101';
+    const id = propertyId || '155615';
     await testAPI(`/api/properties/${id}/insights`, {
       params: {
         dateFrom,
@@ -228,7 +228,7 @@
   }
 
   async function testPropertySettings() {
-    const id = propertyId || '101';
+    const id = propertyId || '155615';
     await testAPI(`/api/properties/${id}/settings`);
   }
 
@@ -448,24 +448,27 @@
       <h2 class="text-xl font-semibold text-gray-900 mb-4">Test Parameters</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Date From</label>
+          <label for="dateFrom" class="block text-sm font-medium text-gray-700 mb-1">Date From</label>
           <input
+            id="dateFrom"
             type="date"
             bind:value={dateFrom}
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Date To</label>
+          <label for="dateTo" class="block text-sm font-medium text-gray-700 mb-1">Date To</label>
           <input
+            id="dateTo"
             type="date"
             bind:value={dateTo}
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Property ID</label>
+          <label for="propertyId" class="block text-sm font-medium text-gray-700 mb-1">Property ID</label>
           <input
+            id="propertyId"
             type="text"
             bind:value={propertyId}
             placeholder="e.g., 101"
@@ -473,8 +476,9 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Channel</label>
+          <label for="channel" class="block text-sm font-medium text-gray-700 mb-1">Channel</label>
           <select
+            id="channel"
             bind:value={channel}
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -485,8 +489,9 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Min Rating</label>
+          <label for="ratingMin" class="block text-sm font-medium text-gray-700 mb-1">Min Rating</label>
           <input
+            id="ratingMin"
             type="number"
             bind:value={ratingMin}
             min="1"
@@ -495,8 +500,9 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Max Rating</label>
+          <label for="ratingMax" class="block text-sm font-medium text-gray-700 mb-1">Max Rating</label>
           <input
+            id="ratingMax"
             type="number"
             bind:value={ratingMax}
             min="1"
@@ -505,8 +511,9 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Limit</label>
+          <label for="limit" class="block text-sm font-medium text-gray-700 mb-1">Limit</label>
           <input
+            id="limit"
             type="number"
             bind:value={limit}
             min="1"
@@ -515,8 +522,9 @@
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Offset</label>
+          <label for="offset" class="block text-sm font-medium text-gray-700 mb-1">Offset</label>
           <input
+            id="offset"
             type="number"
             bind:value={offset}
             min="0"

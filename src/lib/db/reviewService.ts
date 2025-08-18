@@ -296,4 +296,49 @@ export class ReviewService {
       return false;
     }
   }
+
+  // Create a new review
+  static async createReview(reviewData: {
+    listingId: string;
+    title: string;
+    content: string;
+    rating: number;
+    channel: string;
+    language?: string;
+    stayDate?: string | Date;
+    createdAt?: string | Date;
+    categories?: string[];
+    sentiment?: string;
+    status?: string;
+    featured?: boolean;
+    guestName?: string;
+  }): Promise<string> {
+    try {
+      const reviewId = `review_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      await db.insert(reviews).values({
+        id: reviewId,
+        listingId: reviewData.listingId,
+        listingName: '', // Will be updated by trigger or separately
+        channel: reviewData.channel,
+        type: 'guest', // Default type
+        status: reviewData.status || 'pending',
+        overallRating: reviewData.rating,
+        categoriesJson: JSON.stringify(reviewData.categories || []),
+        submittedAt: reviewData.stayDate ? new Date(reviewData.stayDate).toISOString() : new Date().toISOString(),
+        guestName: reviewData.guestName || 'Anonymous',
+        publicReview: reviewData.content,
+        selectedForWeb: reviewData.featured ? 1 : 0,
+        note: null,
+        tagsJson: null,
+        createdAt: reviewData.createdAt ? new Date(reviewData.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      return reviewId;
+    } catch (error) {
+      console.error('Error creating review:', error);
+      throw new Error(`Failed to create review: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 }
