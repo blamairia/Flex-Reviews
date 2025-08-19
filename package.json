@@ -13,11 +13,12 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx src/lib/db/seed.ts",
+  "db:seed": "tsx src/lib/db/seed.ts",
+  "turso:migrate": "tsx scripts/migrate-to-turso.ts",
     "vercel:build": "npm run build"
   },
   "dependencies": {
-    "@skeletonlabs/skeleton": "*",
+    "@skeletonlabs/skeleton": "2.11.0",
     "@sveltejs/kit": "*",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
@@ -28,12 +29,13 @@
     "lucide-svelte": "^0.427.0",
     "postcss": "*",
     "svelte": "*",
-    "svelte-apexcharts": "^1.0.2",
+  "svelte-apexcharts": "^1.0.2",
+  "@libsql/client": "*",
     "tailwindcss": "^3.4.17",
     "vite": "*"
   },
   "devDependencies": {
-    "@skeletonlabs/tw-plugin": "*",
+    "@skeletonlabs/tw-plugin": "0.4.0",
     "@sveltejs/adapter-auto": "*",
     "@sveltejs/adapter-vercel": "^5.10.2",
     "@types/better-sqlite3": "*",
