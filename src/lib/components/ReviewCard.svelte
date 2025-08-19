@@ -9,12 +9,12 @@
   }
 </script>
 
-<div class="border rounded p-4 bg-white">
+<div class="border border-surface-divider rounded-card p-card bg-surface-card shadow-card">
   <div class="flex items-center justify-between">
-    <div class="font-semibold">{guestAbbrev(r.guestName)}</div>
-    <div class="text-sm">{new Date(r.submittedAt).toLocaleString(undefined,{month:'short', year:'numeric'})}</div>
+    <div class="font-semibold text-text-primary">{guestAbbrev(r.guestName)}</div>
+    <div class="text-body text-text-secondary">{new Date(r.submittedAt).toLocaleString(undefined,{month:'short', year:'numeric'})}</div>
   </div>
-  <div class="text-2xl font-bold my-2">{r.overallRating ?? Math.round((r.categories.reduce((a,c)=>a+c.rating,0)/Math.max(1,r.categories.length))*10)/10}</div>
-  <div class="text-sm text-gray-600 mb-2">{r.channel}</div>
-  <div class="text-sm">{r.publicReview}</div>
+  <div class="text-display font-bold my-2 text-brand-700">{r.overallRating ?? Math.round((r.categories.reduce((a,c)=>a+c.rating,0)/Math.max(1,r.categories.length))*10)/10}</div>
+  <div class="text-body text-text-secondary mb-2">{r.channel}</div>
+  <div class="text-body text-text-primary">{r.publicReview}</div>
 </div>

@@ -181,3 +181,41 @@ export function getAmenityIcon(amenityId: number): string {
   }
   return '✓';
 }
+
+// Icon helper function for amenity names
+export function amenityIcon(name: string): string {
+  const n = name.toLowerCase();
+  if (/wifi|internet|wireless/.test(n)) return 'wifi';
+  if (/wash|laundry/.test(n)) return 'washer';
+  if (/tv|television/.test(n)) return 'tv';
+  if (/kitchen|cook|microwave|oven|fridge/.test(n)) return 'kitchen';
+  if (/bath|shower|toilet/.test(n)) return 'bath';
+  if (/smoke|alarm/.test(n)) return 'smoke';
+  if (/carbon monoxide/.test(n)) return 'co';
+  if (/heating|ac|air|hot water/.test(n)) return 'thermo';
+  if (/hangers|iron|linens|towels|shampoo|essentials/.test(n)) return 'closet';
+  if (/garden|backyard/.test(n)) return 'garden';
+  return 'dot';
+}
+
+// Icon SVG generator
+export function getIcon(id: string): string {
+  const common = 'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+  const circle = '<span class="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0">';
+  const end = '</span>';
+
+  const paths: Record<string, string> = {
+    wifi: `<svg ${common}><path d="M5 12a9 9 0 0 1 14 0"/><path d="M8.5 15.5a5 5 0 0 1 7 0"/><path d="M12 19h.01"/></svg>`,
+    washer: `<svg ${common}><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="5"/></svg>`,
+    tv: `<svg ${common}><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M7 21h10"/></svg>`,
+    kitchen: `<svg ${common}><path d="M4 3h16v6H4z"/><path d="M9 9v12"/><path d="M15 9v12"/></svg>`,
+    bath: `<svg ${common}><path d="M3 13h18"/><path d="M5 13V7a2 2 0 0 1 2-2h1"/><path d="M7 21h10"/><path d="M5 17h14"/></svg>`,
+    smoke: `<svg ${common}><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg>`,
+    co: `<svg ${common}><circle cx="12" cy="12" r="8"/><path d="M9.5 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/><path d="M18 10h-3v4h3"/></svg>`,
+    thermo: `<svg ${common}><path d="M14 14a4 4 0 1 1-6 3.46V5a2 2 0 1 1 4 0v12"/></svg>`,
+    closet: `<svg ${common}><path d="M6 3v18"/><path d="M18 3v18"/><path d="M3 7h18"/></svg>`,
+    garden: `<svg ${common}><path d="M12 22v-7"/><path d="M7 15c0-3 2-5 5-5s5 2 5 5"/><path d="M5 22h14"/></svg>`,
+    dot: `<svg ${common}><circle cx="12" cy="12" r="5"/></svg>`
+  };
+  return circle + (paths[id] || paths.dot) + end;
+}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { getAmenityIcon } from '$lib/utils/amenities';
+  import { getAmenityIcon, getIcon, amenityIcon } from '$lib/utils/amenities';
   
   export let isOpen = false;
   export let categorizedAmenities: any[] = [];
@@ -32,47 +32,49 @@
 {#if isOpen}
   <!-- Modal Backdrop -->
   <div 
-    class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
     on:click={handleBackdropClick}
     role="button"
     tabindex="-1"
   >
     <!-- Modal Content -->
-    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+    <div class="bg-surface-card rounded-card max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-floating border border-surface-divider">
       <!-- Modal Header -->
-      <div class="p-6 border-b border-slate-200 flex items-center justify-between">
+      <div class="p-card border-b border-surface-divider flex items-center justify-between bg-surface-card">
         <div>
-          <h3 class="text-2xl font-bold text-slate-900">All Amenities & Features</h3>
-          <p class="text-slate-600 mt-1">{totalAmenities} amenities organized by category</p>
+          <h3 class="text-heading font-bold text-text-primary">All Amenities & Features</h3>
+          <p class="text-text-secondary mt-1">{totalAmenities} amenities organized by category</p>
         </div>
         <button
           on:click={closeModal}
-          class="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+          class="p-2 hover:bg-surface-tint rounded-control transition-colors"
           aria-label="Close modal"
         >
-          <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-6 h-6 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
       </div>
       
       <!-- Modal Body -->
-      <div class="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+      <div class="p-card overflow-y-auto max-h-[calc(90vh-140px)]">
         <div class="space-y-8">
           {#each categorizedAmenities as group}
             <div>
               <div class="flex items-center gap-3 mb-4">
                 <span class="text-3xl">{group.icon}</span>
-                <h4 class="text-xl font-semibold text-slate-900">{group.name}</h4>
-                <span class="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                <h4 class="text-title font-semibold text-text-primary">{group.name}</h4>
+                <span class="text-caption text-text-secondary bg-surface-tint px-2 py-1 rounded-full">
                   {group.amenities.length} items
                 </span>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {#each group.amenities as amenity}
-                  <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
-                    <span class="text-lg flex-shrink-0">{amenity.icon}</span>
-                    <span class="text-slate-700 text-sm font-medium">{amenity.name}</span>
+                  <div class="flex items-center gap-3 p-3 bg-surface-tint rounded-control hover:bg-surface-divider transition-colors">
+                    <div class="w-8 h-8 flex items-center justify-center flex-shrink-0">
+                      {@html getIcon(amenityIcon(amenity.name))}
+                    </div>
+                    <span class="text-text-primary text-body font-medium">{amenity.name}</span>
                   </div>
                 {/each}
               </div>
@@ -82,14 +84,14 @@
       </div>
       
       <!-- Modal Footer -->
-      <div class="p-6 border-t border-slate-200 bg-slate-50">
+      <div class="p-card border-t border-surface-divider bg-surface-tint">
         <div class="flex items-center justify-between">
-          <div class="text-sm text-slate-600">
+          <div class="text-caption text-text-secondary">
             Total: {totalAmenities} amenities across {categorizedAmenities.length} categories
           </div>
           <button
             on:click={closeModal}
-            class="px-4 py-2 bg-slate-600 text-white rounded-xl hover:bg-slate-700 transition-colors font-medium"
+            class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-control transition-colors font-medium"
           >
             Close
           </button>
