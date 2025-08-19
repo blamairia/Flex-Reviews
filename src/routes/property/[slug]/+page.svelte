@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
   
   export let data: any;
   
@@ -16,21 +18,73 @@
   }
 
   let showAllReviews = false;
+  let isLoading = false;
   
   // Reactive computations  
   $: property = data.property || {};
   $: reviews = data.reviews?.reviews || [];
   $: reviewStats = data.reviews?.stats || {};
+  $: pagination = data.reviews?.pagination || { total: 0, limit: 25, offset: 0 };
   $: insights = data.insights || {};
-  $: displayedReviews = showAllReviews ? reviews : reviews.slice(0, 6);
+  // Filter reviews by approval status for customer preview
+  $: approvedReviews = reviews.filter(r => r.status === 'approved'); // Only show approved reviews on property page
+  $: displayedReviews = showAllReviews ? approvedReviews : approvedReviews.slice(0, 6);
   
-  // Calculate live rating from actual reviews
-  $: calculatedRating = reviews.length > 0 
-    ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length 
+  // Calculate rating from approved reviews only (customer view)
+  $: calculatedRating = approvedReviews.length > 0 
+    ? approvedReviews.reduce((sum: number, review: any) => sum + review.rating, 0) / approvedReviews.length 
     : property.summary?.avgRating || property.avgRating || 0;
   
-  $: approvedReviews = reviews.filter(r => r.status === 'approved');
-  $: approvalRate = reviews.length > 0 ? (approvedReviews.length / reviews.length) * 100 : 0;
+  // Pagination calculations
+  $: totalPages = Math.ceil(pagination.total / pagination.limit);
+  $: currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
+  $: hasMore = pagination.offset + pagination.limit < pagination.total;
+  
+  // Load more reviews function
+  async function loadMoreReviews() {
+    if (isLoading || !hasMore) return;
+    
+    isLoading = true;
+    try {
+      const newOffset = pagination.offset + pagination.limit;
+      const response = await fetch(`/api/reviews?listingId=${property.id}&limit=${pagination.limit}&offset=${newOffset}`);
+      const result = await response.json();
+      
+      if (result.success && result.result?.reviews) {
+        // Append new reviews to existing ones
+        reviews = [...reviews, ...result.result.reviews];
+        pagination = result.result.pagination;
+      }
+    } catch (error) {
+      console.error('Failed to load more reviews:', error);
+    } finally {
+      isLoading = false;
+    }
+  }
+  
+  // Show all reviews function
+  async function toggleShowAllReviews() {
+    if (!showAllReviews) {
+      // Load all reviews if not already loaded
+      if (reviews.length < pagination.total) {
+        isLoading = true;
+        try {
+          const response = await fetch(`/api/reviews?listingId=${property.id}&limit=${pagination.total}&offset=0`);
+          const result = await response.json();
+          
+          if (result.success && result.result?.reviews) {
+            reviews = result.result.reviews;
+            pagination = result.result.pagination;
+          }
+        } catch (error) {
+          console.error('Failed to load all reviews:', error);
+        } finally {
+          isLoading = false;
+        }
+      }
+    }
+    showAllReviews = !showAllReviews;
+  }
   
   // Helper functions
   function formatDate(dateString: string): string {
@@ -97,6 +151,23 @@
 </svelte:head>
 
 <div class="min-h-screen bg-slate-50">
+  <!-- Preview Warning Banner -->
+  <div class="bg-gradient-to-r from-amber-500 to-orange-600 text-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-center py-3">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+          <span class="font-medium">Customer Preview Mode</span>
+          <span class="text-amber-100">•</span>
+          <span class="text-sm">Showing only approved reviews as customers would see them</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Navigation Header -->
   <div class="bg-white border-b border-slate-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -220,8 +291,8 @@
                     </svg>
                     <span class="text-sm font-medium text-slate-600">Reviews</span>
                   </div>
-                  <div class="text-2xl font-bold text-slate-900">{reviews.length}</div>
-                  <div class="text-xs text-slate-500">{Math.round(approvalRate)}% approved ({approvedReviews.length} of {reviews.length})</div>
+                  <div class="text-2xl font-bold text-slate-900">{approvedReviews.length}</div>
+                  <div class="text-xs text-slate-500">Guest reviews</div>
                 </div>
               </div>
               
@@ -539,26 +610,26 @@
               <div>
                 <h3 class="text-xl font-semibold text-slate-900">Guest Reviews</h3>
                 <p class="text-slate-600 mt-1">
-                  {reviews.length || 0} total reviews 
-                  {#if reviewStats.averageRating}
-                    • {reviewStats.averageRating.toFixed(1)} average rating
+                  {approvedReviews.length} reviews
+                  {#if calculatedRating > 0}
+                    • {calculatedRating.toFixed(1)} average rating
                   {/if}
                 </p>
               </div>
               
-              {#if reviewStats && reviewStats.sentimentBreakdown}
+              {#if approvedReviews.length > 0}
                 <div class="flex items-center gap-6">
                   <div class="text-center">
-                    <div class="text-2xl font-bold text-green-600">{reviewStats.sentimentBreakdown.positive || 0}</div>
-                    <div class="text-xs text-slate-500">Positive</div>
+                    <div class="text-2xl font-bold text-green-600">{approvedReviews.filter(r => r.rating >= 4).length}</div>
+                    <div class="text-xs text-slate-500">Excellent</div>
                   </div>
                   <div class="text-center">
-                    <div class="text-2xl font-bold text-yellow-600">{reviewStats.sentimentBreakdown.neutral || 0}</div>
-                    <div class="text-xs text-slate-500">Neutral</div>
+                    <div class="text-2xl font-bold text-yellow-600">{approvedReviews.filter(r => r.rating === 3).length}</div>
+                    <div class="text-xs text-slate-500">Good</div>
                   </div>
                   <div class="text-center">
-                    <div class="text-2xl font-bold text-red-600">{reviewStats.sentimentBreakdown.negative || 0}</div>
-                    <div class="text-xs text-slate-500">Negative</div>
+                    <div class="text-2xl font-bold text-slate-600">{approvedReviews.filter(r => r.rating <= 2).length}</div>
+                    <div class="text-xs text-slate-500">Fair</div>
                   </div>
                 </div>
               {/if}
@@ -566,24 +637,37 @@
           </div>
           
           <!-- Review Statistics -->
-          {#if reviewStats.categoryBreakdown && Object.keys(reviewStats.categoryBreakdown).length > 0}
+          {#if approvedReviews.length > 0}
             <div class="p-8 border-b border-slate-200 bg-slate-50">
-              <h4 class="font-semibold text-slate-900 mb-4">Category Ratings</h4>
+              <h4 class="font-semibold text-slate-900 mb-4">Average Ratings</h4>
               <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {#each Object.entries(reviewStats.categoryBreakdown) as [category, rating]}
-                  <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
-                    <div class="text-sm font-medium text-slate-900 capitalize mb-1">{category}</div>
-                    <div class="text-lg font-bold text-slate-900">{rating.toFixed(1)}</div>
-                    <div class="text-xs text-slate-500">{getRatingStars(rating)}</div>
-                  </div>
-                {/each}
+                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
+                  <div class="text-sm font-medium text-slate-900 mb-1">Overall</div>
+                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+                </div>
+                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
+                  <div class="text-sm font-medium text-slate-900 mb-1">Value</div>
+                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+                </div>
+                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
+                  <div class="text-sm font-medium text-slate-900 mb-1">Location</div>
+                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+                </div>
+                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
+                  <div class="text-sm font-medium text-slate-900 mb-1">Cleanliness</div>
+                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+                </div>
               </div>
             </div>
           {/if}
           
           <!-- Reviews List -->
           <div class="p-8">
-            {#if reviews.length === 0}
+            {#if approvedReviews.length === 0}
               <div class="text-center py-12">
                 <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -620,12 +704,6 @@
                           <span class="text-lg">{getRatingStars(review.rating)}</span>
                           <span class="text-sm font-medium text-slate-900">{review.rating}</span>
                         </div>
-                        {#if review.sentiment}
-                          <span class={getSentimentBadge(review.sentiment)}>{review.sentiment}</span>
-                        {/if}
-                        {#if review.status}
-                          <span class={getStatusBadge(review.status)}>{review.status}</span>
-                        {/if}
                       </div>
                     </div>
                     
@@ -651,30 +729,32 @@
                   </div>
                 {/each}
                 
-                <!-- Show More Button -->
-                {#if reviews.length > 6 && !showAllReviews}
-                  <div class="text-center pt-4">
-                    <button
-                      on:click={() => showAllReviews = true}
-                      class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                      </svg>
-                      Show {reviews.length - 6} More Reviews
-                    </button>
-                  </div>
-                {:else if showAllReviews && reviews.length > 6}
-                  <div class="text-center pt-4">
-                    <button
-                      on:click={() => showAllReviews = false}
-                      class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-                      </svg>
-                      Show Less
-                    </button>
+                <!-- Simple Pagination for Customer View -->
+                {#if approvedReviews.length > 6}
+                  <div class="flex items-center justify-center pt-6 border-t border-slate-200">
+                    <div class="flex items-center gap-3">
+                      {#if !showAllReviews}
+                        <button
+                          on:click={() => showAllReviews = true}
+                          class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl font-medium transition-colors"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                          </svg>
+                          View All Reviews
+                        </button>
+                      {:else}
+                        <button
+                          on:click={() => showAllReviews = false}
+                          class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                          </svg>
+                          Show Less
+                        </button>
+                      {/if}
+                    </div>
                   </div>
                 {/if}
               </div>

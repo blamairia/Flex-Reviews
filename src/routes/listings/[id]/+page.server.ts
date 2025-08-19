@@ -30,13 +30,14 @@ export const load = async ({ params, fetch }: any) => {
 
     const property = propertyData.result;
     
-    // Get all reviews and filter for this property
-    const reviewsUrl = `/api/reviews`;
+    // Get reviews for this specific property using the new reviews API with proper pagination
+    const reviewsUrl = `/api/reviews?listingId=${id}&limit=25&offset=0`;
     console.log(`📡 Fetching reviews from: ${reviewsUrl}`);
     const reviewsRes = await fetch(reviewsUrl);
     
     let propertyReviews = [];
     let reviewStats = {};
+    let reviewsPagination = { total: 0, limit: 25, offset: 0 };
     
     if (reviewsRes.ok) {
       try {
@@ -44,14 +45,10 @@ export const load = async ({ params, fetch }: any) => {
         const reviewsData = JSON.parse(reviewsText);
         
         if (reviewsData.success && reviewsData.reviews) {
-          // Filter reviews for this specific property
-          const allReviews = reviewsData.reviews;
+          propertyReviews = reviewsData.reviews || [];
+          reviewsPagination = reviewsData.pagination || { total: 0, limit: 25, offset: 0 };
           
-          propertyReviews = allReviews.filter((review: any) => {
-            return review.listingId === id || review.listingId === parseInt(id) || review.listingId.toString() === id;
-          });
-          
-          console.log(`🔍 Found ${propertyReviews.length} reviews for property ${id}`);
+          console.log(`🔍 Found ${propertyReviews.length} reviews for property ${id} (${reviewsPagination.total} total)`);
           
           // Calculate basic stats from filtered reviews
           if (propertyReviews.length > 0) {
@@ -59,14 +56,14 @@ export const load = async ({ params, fetch }: any) => {
             const averageRating = totalRating / propertyReviews.length;
             
             // Count by sentiment/status
-            const approvedReviews = propertyReviews.filter((r: any) => r.status === 'approved');
+            const approvedReviews = propertyReviews.filter((r: any) => r.selectedForWeb);
             const channelBreakdown = propertyReviews.reduce((acc: any, review: any) => {
               acc[review.channel] = (acc[review.channel] || 0) + 1;
               return acc;
             }, {});
             
             reviewStats = {
-              totalReviews: propertyReviews.length,
+              totalReviews: reviewsPagination.total,
               averageRating: Math.round(averageRating * 10) / 10,
               approvedCount: approvedReviews.length,
               approvalRate: approvedReviews.length / propertyReviews.length,
@@ -128,11 +125,7 @@ export const load = async ({ params, fetch }: any) => {
       reviews: {
         reviews: transformedReviews,
         stats: reviewStats,
-        pagination: { 
-          total: propertyReviews.length,
-          limit: 50,
-          offset: 0
-        }
+        pagination: reviewsPagination
       },
       insights: insightsData.status === 'ok' ? insightsData.result : {}
     };

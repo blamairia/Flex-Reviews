@@ -1,9 +1,9 @@
 export const load = async ({ params, fetch }: any) => {
   try {
-    // Extract property ID from slug (e.g., "property-346994" -> "346994")
     const slug = params.slug;
+    // Extract ID from slug (format: property-155613)
     const id = slug.replace('property-', '');
-    console.log(`🏠 Loading property preview page for slug: ${slug}, extracted ID: ${id}`);
+    console.log(`🏠 Loading property details page for slug: ${slug}, ID: ${id}`);
     
     // Get comprehensive property details from our enhanced properties API
     const propertyUrl = `/api/properties/${id}`;
@@ -32,13 +32,14 @@ export const load = async ({ params, fetch }: any) => {
 
     const property = propertyData.result;
     
-    // Get all reviews and filter for this property
-    const reviewsUrl = `/api/reviews`;
+    // Get reviews for this specific property using the new reviews API with same structure as All Reviews page
+    const reviewsUrl = `/api/reviews?listingId=${id}&limit=25&offset=0`;
     console.log(`📡 Fetching reviews from: ${reviewsUrl}`);
     const reviewsRes = await fetch(reviewsUrl);
     
     let propertyReviews = [];
     let reviewStats = {};
+    let reviewsPagination = { total: 0, limit: 25, offset: 0 };
     
     if (reviewsRes.ok) {
       try {
@@ -46,16 +47,10 @@ export const load = async ({ params, fetch }: any) => {
         const reviewsData = JSON.parse(reviewsText);
         
         if (reviewsData.success && reviewsData.reviews) {
-          // Filter reviews for this specific property and show only approved ones for preview
-          const allReviews = reviewsData.reviews;
+          propertyReviews = reviewsData.reviews || [];
+          reviewsPagination = reviewsData.pagination || { total: 0, limit: 25, offset: 0 };
           
-          propertyReviews = allReviews.filter((review: any) => {
-            const isThisProperty = review.listingId === id || review.listingId === parseInt(id) || review.listingId.toString() === id;
-            const isApproved = review.status === 'approved';
-            return isThisProperty && isApproved;
-          });
-          
-          console.log(`🔍 Found ${propertyReviews.length} approved reviews for property ${id} (preview mode)`);
+          console.log(`🔍 Found ${propertyReviews.length} reviews for property ${id} (${reviewsPagination.total} total)`);
           
           // Calculate basic stats from filtered reviews
           if (propertyReviews.length > 0) {
@@ -63,14 +58,14 @@ export const load = async ({ params, fetch }: any) => {
             const averageRating = totalRating / propertyReviews.length;
             
             // Count by sentiment/status
-            const approvedReviews = propertyReviews.filter((r: any) => r.status === 'approved');
+            const approvedReviews = propertyReviews.filter((r: any) => r.selectedForWeb);
             const channelBreakdown = propertyReviews.reduce((acc: any, review: any) => {
               acc[review.channel] = (acc[review.channel] || 0) + 1;
               return acc;
             }, {});
             
             reviewStats = {
-              totalReviews: propertyReviews.length,
+              totalReviews: reviewsPagination.total,
               averageRating: Math.round(averageRating * 10) / 10,
               approvedCount: approvedReviews.length,
               approvalRate: approvedReviews.length / propertyReviews.length,
@@ -102,7 +97,8 @@ export const load = async ({ params, fetch }: any) => {
       comment: review.publicReview,
       date: review.submittedAt,
       channel: review.channel,
-      status: review.status,
+      status: review.status, // This comes from the API as "approved", "pending", etc.
+      selectedForWeb: review.selectedForWeb === 1, // Convert to boolean
       sentiment: review.overallRating >= 4 ? 'positive' : (review.overallRating === 3 ? 'neutral' : 'negative'),
       categories: review.categoriesJson ? JSON.parse(review.categoriesJson).reduce((acc: any, cat: string) => {
         acc[cat] = review.overallRating; // Use overall rating for each category
@@ -132,20 +128,18 @@ export const load = async ({ params, fetch }: any) => {
       reviews: {
         reviews: transformedReviews,
         stats: reviewStats,
-        pagination: { 
-          total: propertyReviews.length,
-          limit: 50,
-          offset: 0
-        }
+        pagination: reviewsPagination
       },
       insights: insightsData.status === 'ok' ? insightsData.result : {}
     };
   } catch (error) {
     console.error('Failed to load property details:', error);
+    const slug = params.slug;
+    const id = slug.replace('property-', '');
     return { 
       property: { 
-        id: params.slug.replace('property-', ''), 
-        name: `Property ${params.slug.replace('property-', '')}`, 
+        id: id, 
+        name: `Property ${id}`, 
         slug: params.slug,
         address: 'Address not available',
         summary: { avgRating: 0, reviews: 0, approvedPct: 0 }
