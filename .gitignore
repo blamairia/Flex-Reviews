@@ -4,6 +4,7 @@ node_modules
 .drizzle
 .svelte-kit
 .env.local
+.env
 Flex Living - dev assessment.md
 PROJECT_DEVELOPMENT_PLAN.md
 data/*.db-journal
