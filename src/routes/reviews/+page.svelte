@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { browser } from '$app/environment';
+  import KpiCards from '$lib/components/KpiCards.svelte';
 
   export let data: any;
 
@@ -30,6 +31,8 @@
   let showDrawer = false;
   let selectedReview: ReviewRow | null = null;
   let showBatchToolbar = false;
+  let statsData: any = null;
+  let statsLoading = false;
 
   // Filters - synced with URL
   let searchQuery = '';
@@ -215,6 +218,31 @@
     }
   }
 
+  // Load statistics data
+  async function loadStats() {
+    statsLoading = true;
+    try {
+      const params = new URLSearchParams();
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      
+      const query = params.toString();
+      const url = query ? `/api/reviews/stats?${query}` : '/api/reviews/stats';
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      statsData = await response.json();
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+      statsData = null;
+    } finally {
+      statsLoading = false;
+    }
+  }
+
   // Search with debounce
   function handleSearchInput() {
     clearTimeout(searchTimeout);
@@ -364,6 +392,7 @@
   // Initialize from URL and load data
   onMount(() => {
     parseFiltersFromURL();
+    loadStats(); // Load statistics on page load
     if (data.reviews && data.reviews.length > 0) {
       reviews = data.reviews;
       console.log('✅ Using server-side data:', data.reviews.length, 'reviews');
@@ -374,10 +403,11 @@
     }
   });
 
-  // React to URL changes
+  // React to URL changes and reload stats when date filters change
   $: if (browser && $page.url.search) {
     parseFiltersFromURL();
     loadReviews();
+    loadStats();
   }
 </script>
 
@@ -386,34 +416,18 @@
 </svelte:head>
 
 <!-- Main Container -->
-<div class="min-h-screen bg-slate-50">
+<div class="min-h-screen bg-surface-cream">
   <!-- Header -->
-  <div class="bg-white border-b border-slate-200">
+  <div class="bg-surface-card border-b border-surface-divider">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <div class="flex items-center gap-6">
-          <h1 class="text-2xl font-bold text-slate-900">Reviews</h1>
-          
-          <!-- KPI Chips -->
-          <div class="hidden sm:flex items-center gap-3">
-            <div class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-slate-100 text-slate-700">
-              {totalReviews} Total
-            </div>
-            <div class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-green-100 text-green-700">
-              {approvedPercentage}% Approved
-            </div>
-            <div class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
-              {selectedPercentage}% Featured
-            </div>
-            <div class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-700">
-              {avgRating.toFixed(1)} Avg Rating
-            </div>
-          </div>
+          <h1 class="text-heading font-bold text-text-primary">Reviews Management</h1>
         </div>
         
         <div class="flex items-center gap-3">
           <button
-            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-surface-card border border-surface-divider rounded-control text-body font-medium text-text-primary hover:bg-surface-tint transition-colors"
             on:click={() => goto('/listings')}
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,118 +440,271 @@
     </div>
   </div>
 
-  <!-- Filter Rail -->
-  <div class="bg-white border-b border-slate-200">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div class="space-y-4">
-        <!-- First Row: Search -->
-        <div class="flex flex-col lg:flex-row gap-4">
-          <div class="flex-1">
+  <!-- KPI Cards Section -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {#if statsLoading}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gallery">
+        {#each Array(4) as _}
+          <div class="bg-surface-card p-card rounded-card border border-surface-divider shadow-card animate-pulse">
+            <div class="flex items-center justify-between">
+              <div class="space-y-3">
+                <div class="h-4 bg-surface-tint rounded w-24"></div>
+                <div class="h-8 bg-surface-tint rounded w-16"></div>
+                <div class="h-3 bg-surface-tint rounded w-20"></div>
+              </div>
+              <div class="w-12 h-12 bg-surface-tint rounded-full"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else if statsData}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gallery">
+        <!-- Total Reviews -->
+        <div class="bg-gradient-to-br from-brand-50 to-brand-100 p-card rounded-card border border-brand-200 shadow-card">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-body font-medium text-brand-600 uppercase tracking-wide">Total Reviews</p>
+              <p class="text-display font-bold text-brand-800 mt-2">{statsData.kpis.totalReviews}</p>
+              <p class="text-body text-brand-700 mt-1">
+                {statsData.kpis.thirtyDayGrowth > 0 ? '+' : ''}{statsData.kpis.thirtyDayGrowth}% this month
+              </p>
+            </div>
+            <div class="w-12 h-12 bg-brand-600 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Average Rating -->
+        <div class="bg-gradient-to-br from-success-50 to-success-100 p-card rounded-card border border-success-200 shadow-card">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-body font-medium text-success-600 uppercase tracking-wide">Avg Rating</p>
+              <p class="text-display font-bold text-success-800 mt-2">{statsData.kpis.avgRating}</p>
+              <p class="text-body text-success-700 mt-1">out of 5.0</p>
+            </div>
+            <div class="w-12 h-12 bg-success-600 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Five Star Rate -->
+        <div class="bg-gradient-to-br from-warning-50 to-warning-100 p-card rounded-card border border-warning-200 shadow-card">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-body font-medium text-warning-600 uppercase tracking-wide">5-Star Rate</p>
+              <p class="text-display font-bold text-warning-800 mt-2">{statsData.kpis.fiveStarRate}%</p>
+              <p class="text-body text-warning-700 mt-1">excellence rate</p>
+            </div>
+            <div class="w-12 h-12 bg-warning-600 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Channels -->
+        <div class="bg-gradient-to-br from-accent-50 to-accent-100 p-card rounded-card border border-accent-200 shadow-card">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-body font-medium text-accent-600 uppercase tracking-wide">Top Channel</p>
+              <p class="text-display font-bold text-accent-800 mt-2">
+                {statsData.channels.length > 0 ? statsData.channels[0].name : 'N/A'}
+              </p>
+              <p class="text-body text-accent-700 mt-1">
+                {statsData.channels.length > 0 ? `${statsData.channels[0].percentage}%` : '0%'} of reviews
+              </p>
+            </div>
+            <div class="w-12 h-12 bg-accent-600 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Enhanced Filter Section -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+    <div class="bg-surface-card rounded-card border border-surface-divider shadow-card p-card">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-title font-semibold text-text-primary">Filters & Search</h2>
+        <button
+          on:click={resetFilters}
+          class="text-body font-medium text-brand-600 hover:text-brand-700 transition-colors"
+        >
+          Reset all filters
+        </button>
+      </div>
+
+      <div class="space-y-6">
+        <!-- Search Bar -->
+        <div>
+          <label for="search" class="block text-body font-medium text-text-primary mb-2">Search Reviews</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            </div>
             <input
+              id="search"
               type="text"
-              placeholder="Search reviews, guests, or properties..."
+              placeholder="Search reviews, guests, properties..."
               bind:value={searchQuery}
               on:input={handleSearchInput}
-              class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+              class="w-full pl-10 pr-4 py-3 border border-surface-divider rounded-control text-body placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-colors"
             />
           </div>
-          <button
-            on:click={resetFilters}
-            class="px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            Reset filters
-          </button>
         </div>
-        
-        <!-- Second Row: Filters -->
-        <div class="flex flex-wrap gap-3">
+
+        <!-- Filter Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <!-- Status Filter -->
-          <select
-            multiple
-            bind:value={filterStatus}
-            on:change={updateURL}
-            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
+          <div>
+            <label class="block text-body font-medium text-text-primary mb-2">Status</label>
+            <div class="space-y-2">
+              {#each ['pending', 'approved', 'rejected'] as status}
+                <label class="flex items-center">
+                  <input
+                    type="checkbox"
+                    bind:group={filterStatus}
+                    value={status}
+                    on:change={updateURL}
+                    class="rounded border-surface-divider text-brand-600 focus:ring-brand-500"
+                  />
+                  <span class="ml-2 text-body text-text-primary capitalize">{status}</span>
+                </label>
+              {/each}
+            </div>
+          </div>
 
           <!-- Channel Filter -->
-          <select
-            multiple
-            bind:value={filterChannel}
-            on:change={updateURL}
-            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          >
-            <option value="airbnb">Airbnb</option>
-            <option value="booking">Booking.com</option>
-            <option value="vrbo">VRBO</option>
-            <option value="website">Website</option>
-          </select>
-
-          <!-- Rating Range -->
-          <div class="flex items-center gap-2">
-            <span class="text-sm text-slate-600">Rating:</span>
-            <input
-              type="range"
-              min="0"
-              max="5"
-              bind:value={ratingMin}
-              on:change={updateURL}
-              class="w-20"
-              aria-label="Minimum rating"
-            />
-            <span class="text-sm text-slate-600">{ratingMin}-{ratingMax}</span>
-            <input
-              type="range"
-              min="0"
-              max="5"
-              bind:value={ratingMax}
-              on:change={updateURL}
-              class="w-20"
-              aria-label="Maximum rating"
-            />
+          <div>
+            <label class="block text-body font-medium text-text-primary mb-2">Channels</label>
+            <div class="space-y-2">
+              {#each ['airbnb', 'booking', 'vrbo', 'website'] as channel}
+                <label class="flex items-center">
+                  <input
+                    type="checkbox"
+                    bind:group={filterChannel}
+                    value={channel}
+                    on:change={updateURL}
+                    class="rounded border-surface-divider text-brand-600 focus:ring-brand-500"
+                  />
+                  <span class="ml-2 text-body text-text-primary capitalize">{channel}</span>
+                </label>
+              {/each}
+            </div>
           </div>
 
-          <!-- Selected for Web Toggle -->
-          <label class="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm cursor-pointer hover:bg-slate-50">
-            <input
-              type="checkbox"
-              bind:checked={selectedForWeb}
-              on:change={updateURL}
-              class="w-4 h-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
-            />
-            Featured Only
-          </label>
+          <!-- Rating Range -->
+          <div>
+            <label class="block text-body font-medium text-text-primary mb-2">Rating Range</label>
+            <div class="space-y-3">
+              <div>
+                <label for="rating-min" class="block text-caption text-text-secondary">Minimum: {ratingMin}</label>
+                <input
+                  id="rating-min"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  bind:value={ratingMin}
+                  on:change={updateURL}
+                  class="w-full h-2 bg-surface-tint rounded-full appearance-none cursor-pointer slider-brand"
+                />
+              </div>
+              <div>
+                <label for="rating-max" class="block text-caption text-text-secondary">Maximum: {ratingMax}</label>
+                <input
+                  id="rating-max"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  bind:value={ratingMax}
+                  on:change={updateURL}
+                  class="w-full h-2 bg-surface-tint rounded-full appearance-none cursor-pointer slider-brand"
+                />
+              </div>
+            </div>
+          </div>
 
           <!-- Date Range -->
-          <input
-            type="date"
-            bind:value={dateFrom}
-            on:change={updateURL}
-            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
-          <input
-            type="date"
-            bind:value={dateTo}
-            on:change={updateURL}
-            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          />
-
-          <!-- Sort -->
-          <select
-            bind:value={sortBy}
-            on:change={updateURL}
-            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-          >
-            <option value="submittedAt:desc">Latest First</option>
-            <option value="submittedAt:asc">Oldest First</option>
-            <option value="overallRating:desc">Highest Rating</option>
-            <option value="overallRating:asc">Lowest Rating</option>
-            <option value="listingName:asc">Property A-Z</option>
-          </select>
+          <div>
+            <label class="block text-body font-medium text-text-primary mb-2">Date Range</label>
+            <div class="space-y-3">
+              <div>
+                <label for="date-from" class="block text-caption text-text-secondary">From</label>
+                <input
+                  id="date-from"
+                  type="date"
+                  bind:value={dateFrom}
+                  on:change={updateURL}
+                  class="w-full px-3 py-2 border border-surface-divider rounded-control text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label for="date-to" class="block text-caption text-text-secondary">To</label>
+                <input
+                  id="date-to"
+                  type="date"
+                  bind:value={dateTo}
+                  on:change={updateURL}
+                  class="w-full px-3 py-2 border border-surface-divider rounded-control text-body focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- Active Filters Display -->
+        {#if filterStatus.length > 0 || filterChannel.length > 0 || searchQuery || dateFrom || dateTo}
+          <div class="border-t border-surface-divider pt-4">
+            <p class="text-body font-medium text-text-primary mb-3">Active Filters:</p>
+            <div class="flex flex-wrap gap-2">
+              {#if searchQuery}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-brand-100 text-brand-700 rounded-full text-caption">
+                  Search: "{searchQuery}"
+                  <button on:click={() => { searchQuery = ''; updateURL(); }} class="ml-1 hover:text-brand-900">×</button>
+                </span>
+              {/if}
+              {#each filterStatus as status}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-success-100 text-success-700 rounded-full text-caption">
+                  Status: {status}
+                  <button on:click={() => { filterStatus = filterStatus.filter(s => s !== status); updateURL(); }} class="ml-1 hover:text-success-900">×</button>
+                </span>
+              {/each}
+              {#each filterChannel as channel}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-accent-100 text-accent-700 rounded-full text-caption">
+                  Channel: {channel}
+                  <button on:click={() => { filterChannel = filterChannel.filter(c => c !== channel); updateURL(); }} class="ml-1 hover:text-accent-900">×</button>
+                </span>
+              {/each}
+              {#if dateFrom}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-warning-100 text-warning-700 rounded-full text-caption">
+                  From: {dateFrom}
+                  <button on:click={() => { dateFrom = ''; updateURL(); }} class="ml-1 hover:text-warning-900">×</button>
+                </span>
+              {/if}
+              {#if dateTo}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-warning-100 text-warning-700 rounded-full text-caption">
+                  To: {dateTo}
+                  <button on:click={() => { dateTo = ''; updateURL(); }} class="ml-1 hover:text-warning-900">×</button>
+                </span>
+              {/if}
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -593,131 +760,132 @@
       </div>
     {:else}
       <!-- Reviews Table -->
-      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <!-- Table Header -->
-        <div class="px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-4">
-              <label class="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedReviews.size === reviews.length && reviews.length > 0}
-                  on:change={toggleSelectAll}
-                  class="w-4 h-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
-                />
-                <span class="ml-2 text-sm text-slate-600">
-                  {selectedReviews.size > 0 ? `${selectedReviews.size} selected` : 'Select all'}
-                </span>
-              </label>
-            </div>
-            <div class="text-sm text-slate-600">
-              {totalReviews} review{totalReviews !== 1 ? 's' : ''}
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div class="bg-surface-card rounded-card border border-surface-divider overflow-hidden shadow-card">
+          <!-- Table Header -->
+          <div class="px-card py-4 border-b border-surface-divider bg-surface-tint">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <label class="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedReviews.size === reviews.length && reviews.length > 0}
+                    on:change={toggleSelectAll}
+                    class="w-4 h-4 text-brand-600 focus:ring-brand-500 border-surface-divider rounded"
+                  />
+                  <span class="ml-2 text-body text-text-secondary">
+                    {selectedReviews.size > 0 ? `${selectedReviews.size} selected` : 'Select all'}
+                  </span>
+                </label>
+              </div>
+              <div class="text-body text-text-secondary">
+                {totalReviews} review{totalReviews !== 1 ? 's' : ''}
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Table -->
-        <div class="overflow-x-auto">
-          <table class="w-full">
-            <thead class="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  <span class="sr-only">Select</span>
+          <!-- Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-surface-tint border-b border-surface-divider">
+                <tr>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    <span class="sr-only">Select</span>
+                  </th>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    Submitted
+                  </th>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    Property
+                  </th>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    Rating
+                  </th>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    Channel
+                  </th>
+                  <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
+                    Status
                 </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Submitted
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Property
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Rating
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Channel
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
                   Featured
                 </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
                   Review
                 </th>
-                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th scope="col" class="px-card py-3 text-left text-caption font-medium text-text-secondary uppercase tracking-wider">
                   <span class="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
-            <tbody class="bg-white divide-y divide-slate-200">
+            <tbody class="bg-surface-card divide-y divide-surface-divider">
               {#each reviews as review}
                 <tr 
-                  class="hover:bg-slate-50 cursor-pointer"
+                  class="hover:bg-surface-tint cursor-pointer transition-colors"
                   on:click={() => openDrawer(review)}
                 >
-                  <td class="px-6 py-4 whitespace-nowrap" on:click|stopPropagation>
+                  <td class="px-card py-4 whitespace-nowrap" on:click|stopPropagation>
                     <input
                       type="checkbox"
                       checked={selectedReviews.has(review.id)}
                       on:change={() => toggleReviewSelection(review.id)}
-                      class="w-4 h-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
+                      class="w-4 h-4 text-brand-600 focus:ring-brand-500 border-surface-divider rounded"
                     />
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-slate-900" title={formatDate(review.submittedAt)}>
+                  <td class="px-card py-4 whitespace-nowrap">
+                    <div class="text-body text-text-primary" title={formatDate(review.submittedAt)}>
                       {formatRelativeDate(review.submittedAt)}
                     </div>
-                    <div class="text-xs text-slate-500">{review.guestName || 'Anonymous'}</div>
+                    <div class="text-caption text-text-secondary">{review.guestName || 'Anonymous'}</div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-card py-4 whitespace-nowrap">
                     <button
                       on:click|stopPropagation={() => window.open(`/listings/${review.listingId}`, '_blank')}
-                      class="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                      class="text-body font-medium text-brand-600 hover:text-brand-700 hover:underline transition-colors"
                     >
                       {review.listingName}
                     </button>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-card py-4 whitespace-nowrap">
                     {#if review.overallRating}
                       <div class="flex items-center gap-1">
-                        <span class="text-yellow-400 text-sm">{getRatingStars(review.overallRating)}</span>
-                        <span class="text-sm text-slate-600">{review.overallRating}/5</span>
+                        <span class="text-warning-500 text-body">{getRatingStars(review.overallRating)}</span>
+                        <span class="text-body text-text-secondary">{review.overallRating}/5</span>
                       </div>
                     {:else}
-                      <span class="text-sm text-slate-400">No rating</span>
+                      <span class="text-body text-text-secondary">No rating</span>
                     {/if}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-card py-4 whitespace-nowrap">
                     <span class={getChannelBadge(review.channel)}>
                       {review.channel.charAt(0).toUpperCase() + review.channel.slice(1)}
                     </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-card py-4 whitespace-nowrap">
                     <span class={getStatusBadge(review.status)}>
                       {review.status.charAt(0).toUpperCase() + review.status.slice(1)}
                     </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-card py-4 whitespace-nowrap">
                     {#if review.selectedForWeb}
-                      <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                      <svg class="w-5 h-5 text-warning-500" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
                       </svg>
                     {:else}
-                      <svg class="w-5 h-5 text-slate-300" fill="currentColor" viewBox="0 0 20 20">
+                      <svg class="w-5 h-5 text-text-secondary" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
                       </svg>
                     {/if}
                   </td>
-                  <td class="px-6 py-4">
-                    <div class="text-sm text-slate-900 max-w-xs truncate">
+                  <td class="px-card py-4">
+                    <div class="text-body text-text-primary max-w-xs truncate">
                       {truncateText(review.publicReview)}
                     </div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" on:click|stopPropagation>
+                  <td class="px-card py-4 whitespace-nowrap text-right text-body font-medium" on:click|stopPropagation>
                     <button
                       on:click={() => openDrawer(review)}
-                      class="text-slate-400 hover:text-slate-600"
+                      class="text-text-secondary hover:text-text-primary transition-colors"
                       aria-label="View review details"
                     >
                       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -733,9 +901,9 @@
 
         <!-- Pagination Controls -->
         {#if !showAll && totalPages > 1}
-          <div class="px-6 py-4 border-t border-slate-200">
+          <div class="px-card py-4 border-t border-surface-divider">
             <div class="flex items-center justify-between">
-              <div class="text-sm text-slate-600">
+              <div class="text-body text-text-secondary">
                 Showing {currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount} reviews
               </div>
               
@@ -775,23 +943,8 @@
           </div>
         {/if}
       </div>
-    {/if}
-
-    <!-- Show All Toggle -->
-    <div class="px-6 py-3 border-t border-slate-200 bg-slate-50">
-      <div class="flex items-center justify-between">
-        <div class="text-sm text-slate-600">
-          {showAll ? `Showing all ${totalCount} reviews` : `Showing ${pageSize} reviews per page`}
-        </div>
-        <button
-          on:click={toggleShowAll}
-          class="px-4 py-2 text-sm font-medium border border-slate-200 rounded-lg hover:bg-white focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 {showAll ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-700'}"
-        >
-          {showAll ? 'Show Paginated' : 'Show All'}
-        </button>
-      </div>
     </div>
-  </div>
+{/if}
 </div>
 
 <!-- Batch Toolbar -->
@@ -1013,6 +1166,8 @@
   </div>
 {/if}
 
+</div>
+
 <style>
   /* Custom scrollbar for drawer */
   .overflow-y-auto::-webkit-scrollbar {
@@ -1030,5 +1185,51 @@
   
   .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+  }
+
+  /* Custom slider styling */
+  .slider-brand {
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .slider-brand::-webkit-slider-track {
+    background: #f1f5f9;
+    height: 6px;
+    border-radius: 3px;
+  }
+
+  .slider-brand::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    background: #0ea5e9;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+  }
+
+  .slider-brand::-webkit-slider-thumb:hover {
+    background: #0284c7;
+    transform: scale(1.1);
+  }
+
+  .slider-brand::-moz-range-track {
+    background: #f1f5f9;
+    height: 6px;
+    border-radius: 3px;
+    border: none;
+  }
+
+  .slider-brand::-moz-range-thumb {
+    background: #0ea5e9;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 </style>
