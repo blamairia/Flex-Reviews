@@ -23,6 +23,7 @@
   };
 
   let reviews: ReviewRow[] = [];
+  let totalCount = 0; // Store total count from API
   let loading = false;
   let error: string | null = null;
   let selectedReviews = new Set<string>();
@@ -43,6 +44,9 @@
   let sortBy = 'submittedAt:desc';
   let currentPage = 0;
   let pageSize = 25;
+  let showAll = false; // Toggle for showing all reviews
+  let hasMore = false; // Whether there are more pages
+  let totalPages = 0; // Total number of pages
 
   // Search debounce
   let searchTimeout: number;
@@ -124,7 +128,12 @@
     if (dateTo) params.set('dateTo', dateTo);
     if (sortBy !== 'submittedAt:desc') params.set('sort', sortBy);
     if (currentPage > 0) params.set('offset', (currentPage * pageSize).toString());
-    if (pageSize !== 25) params.set('limit', pageSize.toString());
+    if (showAll) {
+      params.set('limit', totalCount.toString()); // Show all reviews
+      params.delete('offset'); // Remove pagination when showing all
+    } else {
+      params.set('limit', pageSize.toString());
+    }
     
     return params.toString();
   }
@@ -191,6 +200,9 @@
       }
       
       reviews = data.reviews;
+      totalCount = data.pagination?.total || data.reviews.length; // Store total count from API
+      hasMore = data.pagination?.hasMore || false;
+      totalPages = Math.ceil(totalCount / pageSize);
       // Clear selection when data changes
       selectedReviews.clear();
       selectedReviews = selectedReviews;
@@ -298,6 +310,34 @@
     selectedReview = null;
   }
 
+  // Pagination functions
+  function goToPage(page: number) {
+    if (page >= 0 && page < totalPages) {
+      currentPage = page;
+      updateURL();
+      loadReviews();
+    }
+  }
+
+  function nextPage() {
+    if (hasMore) {
+      goToPage(currentPage + 1);
+    }
+  }
+
+  function prevPage() {
+    if (currentPage > 0) {
+      goToPage(currentPage - 1);
+    }
+  }
+
+  function toggleShowAll() {
+    showAll = !showAll;
+    currentPage = 0; // Reset to first page when toggling
+    updateURL();
+    loadReviews();
+  }
+
   // Toast notifications
   let toastMessage = '';
   let toastType: 'success' | 'error' | 'info' = 'info';
@@ -310,12 +350,12 @@
     setTimeout(() => showToastNotification = false, 3000);
   }
 
-  // Derived KPIs from current page data
-  $: totalReviews = reviews.length;
+  // Derived KPIs - Total from API, percentages from current page sample
+  $: totalReviews = totalCount; // Use total from API
   $: approvedCount = reviews.filter(r => r.status === 'approved').length;
-  $: approvedPercentage = totalReviews > 0 ? Math.round((approvedCount / totalReviews) * 100) : 0;
+  $: approvedPercentage = reviews.length > 0 ? Math.round((approvedCount / reviews.length) * 100) : 0; // Current page sample
   $: selectedCount = reviews.filter(r => r.selectedForWeb).length;
-  $: selectedPercentage = totalReviews > 0 ? Math.round((selectedCount / totalReviews) * 100) : 0;
+  $: selectedPercentage = reviews.length > 0 ? Math.round((selectedCount / reviews.length) * 100) : 0; // Current page sample
   $: avgRating = reviews.length > 0 
     ? reviews.filter(r => r.overallRating !== null)
         .reduce((sum, r) => sum + (r.overallRating || 0), 0) / reviews.filter(r => r.overallRating !== null).length
@@ -688,8 +728,67 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        {#if !showAll && totalPages > 1}
+          <div class="px-6 py-4 border-t border-slate-200">
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-slate-600">
+                Showing {currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount} reviews
+              </div>
+              
+              <div class="flex items-center gap-2">
+                <button
+                  on:click={prevPage}
+                  disabled={currentPage === 0}
+                  class="px-3 py-1 text-sm border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <!-- Page Numbers -->
+                <div class="flex gap-1">
+                  {#each Array(Math.min(5, totalPages)) as _, i}
+                    {@const pageNum = currentPage < 3 ? i : currentPage - 2 + i}
+                    {#if pageNum >= 0 && pageNum < totalPages}
+                      <button
+                        on:click={() => goToPage(pageNum)}
+                        class="px-3 py-1 text-sm border rounded-md {pageNum === currentPage ? 'bg-blue-500 text-white border-blue-500' : 'border-slate-200 hover:bg-slate-50'}"
+                      >
+                        {pageNum + 1}
+                      </button>
+                    {/if}
+                  {/each}
+                </div>
+                
+                <button
+                  on:click={nextPage}
+                  disabled={!hasMore}
+                  class="px-3 py-1 text-sm border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
+
+    <!-- Show All Toggle -->
+    <div class="px-6 py-3 border-t border-slate-200 bg-slate-50">
+      <div class="flex items-center justify-between">
+        <div class="text-sm text-slate-600">
+          {showAll ? `Showing all ${totalCount} reviews` : `Showing ${pageSize} reviews per page`}
+        </div>
+        <button
+          on:click={toggleShowAll}
+          class="px-4 py-2 text-sm font-medium border border-slate-200 rounded-lg hover:bg-white focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 {showAll ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-700'}"
+        >
+          {showAll ? 'Show Paginated' : 'Show All'}
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 

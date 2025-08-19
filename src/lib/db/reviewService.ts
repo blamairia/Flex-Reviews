@@ -99,6 +99,148 @@ export class ReviewService {
     }
   }
 
+  // Get all reviews with comprehensive filtering and pagination
+  static async getFilteredReviews(
+    filters: {
+      searchQuery?: string;
+      status?: string[];
+      channel?: string[];
+      listingId?: string;
+      ratingMin?: number;
+      ratingMax?: number;
+      selectedForWeb?: boolean;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+    options: {
+      limit?: number;
+      offset?: number;
+      orderBy?: {
+        field: 'submittedAt' | 'overallRating' | 'listingName';
+        direction: 'asc' | 'desc';
+      };
+    } = {}
+  ): Promise<{ reviews: ReviewWithDetails[]; total: number }> {
+    try {
+      const { limit = 25, offset = 0, orderBy = { field: 'submittedAt', direction: 'desc' } } = options;
+      const conditions = [];
+
+      // Search query filter
+      if (filters.searchQuery) {
+        const searchQuery = `%${filters.searchQuery.toLowerCase()}%`;
+        conditions.push(
+          sql`(LOWER(${reviews.publicReview}) LIKE ${searchQuery} OR 
+              LOWER(${reviews.guestName}) LIKE ${searchQuery} OR 
+              LOWER(${reviews.listingName}) LIKE ${searchQuery})`
+        );
+      }
+
+      // Status filter
+      if (filters.status && filters.status.length > 0) {
+        conditions.push(
+          sql`${reviews.status} IN (${sql.join(filters.status.map(s => sql`${s}`), sql`, `)})`
+        );
+      }
+
+      // Channel filter
+      if (filters.channel && filters.channel.length > 0) {
+        conditions.push(
+          sql`${reviews.channel} IN (${sql.join(filters.channel.map(c => sql`${c}`), sql`, `)})`
+        );
+      }
+
+      // Listing ID filter
+      if (filters.listingId) {
+        conditions.push(eq(reviews.listingId, filters.listingId));
+      }
+
+      // Rating range filter
+      if (filters.ratingMin !== undefined || filters.ratingMax !== undefined) {
+        const minRating = filters.ratingMin ?? 0;
+        const maxRating = filters.ratingMax ?? 5;
+        conditions.push(
+          sql`${reviews.overallRating} >= ${minRating} AND ${reviews.overallRating} <= ${maxRating}`
+        );
+      }
+
+      // Selected for web filter
+      if (filters.selectedForWeb !== undefined) {
+        conditions.push(eq(reviews.selectedForWeb, filters.selectedForWeb ? 1 : 0));
+      }
+
+      // Date range filter
+      if (filters.dateFrom) {
+        conditions.push(sql`${reviews.submittedAt} >= ${filters.dateFrom}`);
+      }
+
+      if (filters.dateTo) {
+        const endDate = new Date(filters.dateTo);
+        endDate.setHours(23, 59, 59, 999);
+        conditions.push(sql`${reviews.submittedAt} <= ${endDate.toISOString()}`);
+      }
+
+      // Build base query
+      const baseQuery = db
+        .select({
+          id: reviews.id,
+          listingId: reviews.listingId,
+          listingName: reviews.listingName,
+          channel: reviews.channel,
+          type: reviews.type,
+          status: reviews.status,
+          overallRating: reviews.overallRating,
+          categoriesJson: reviews.categoriesJson,
+          submittedAt: reviews.submittedAt,
+          guestName: reviews.guestName,
+          publicReview: reviews.publicReview,
+          selectedForWeb: sql<boolean>`CASE WHEN ${reviews.selectedForWeb} = 1 THEN true ELSE false END`,
+          note: reviews.note,
+          tagsJson: reviews.tagsJson,
+          createdAt: reviews.createdAt,
+        })
+        .from(reviews);
+
+      // Apply filters
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+      
+      // Get total count
+      const countQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(reviews);
+      
+      const totalResult = whereClause 
+        ? await countQuery.where(whereClause)
+        : await countQuery;
+      
+      const total = totalResult[0]?.count || 0;
+
+      // Build order by clause
+      let orderByClause;
+      switch (orderBy.field) {
+        case 'overallRating':
+          orderByClause = orderBy.direction === 'asc' ? asc(reviews.overallRating) : desc(reviews.overallRating);
+          break;
+        case 'listingName':
+          orderByClause = orderBy.direction === 'asc' ? asc(reviews.listingName) : desc(reviews.listingName);
+          break;
+        default:
+          orderByClause = orderBy.direction === 'asc' ? asc(reviews.submittedAt) : desc(reviews.submittedAt);
+      }
+
+      // Get paginated results
+      const query = whereClause ? baseQuery.where(whereClause) : baseQuery;
+      const result = await query
+        .orderBy(orderByClause)
+        .limit(limit)
+        .offset(offset);
+
+      return { reviews: result, total };
+    } catch (error) {
+      console.error('Error fetching filtered reviews:', error);
+      return { reviews: [], total: 0 };
+    }
+  }
+
   // Get all reviews with filtering and sorting
   static async getAllReviews(options: {
     listingId?: string;

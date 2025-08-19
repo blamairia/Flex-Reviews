@@ -1,605 +1,706 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { page } from '$app/stores';
-  import { ListingService } from '$lib/db/listingService';
-  import { ReviewService } from '$lib/db/reviewService';
-  import type { ListingWithStats } from '$lib/db/listingService';
-  import type { ReviewWithDetails } from '$lib/db/reviewService';
+  import { goto } from '$app/navigation';
   
-  let listing: ListingWithStats | null = null;
-  let selectedReviews: ReviewWithDetails[] = [];
-  let loading = true;
-
-  $: slug = $page.params.slug;
-
-  onMount(async () => {
-    if (slug) {
-      try {
-        // Load listing data
-        listing = await ListingService.getListingBySlug(slug);
-        
-        // Load selected reviews for this listing
-        if (listing) {
-          selectedReviews = await ReviewService.getSelectedReviewsForProperty(listing.id);
-        }
-      } catch (error) {
-        console.error('Error loading property data:', error);
-      } finally {
-        loading = false;
-      }
-    }
-  });
-
-  // Mock data for missing property fields
-  $: mockPropertyData = {
-    imageGallery: [
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1484154218962-a197022b5858?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'
-    ],
-    bedrooms: 2,
-    bathrooms: 2,
-    guestCapacity: 4,
-    pricePerNight: 185,
-    cleaningFee: 75,
-    serviceFee: 25,
-    amenities: [
-      'WiFi', 'Kitchen', 'Washer', 'Dryer', 'Air conditioning',
-      'Heating', 'Workspace', 'TV', 'Hair dryer', 'Iron'
-    ],
-    description: 'Beautiful and modern apartment in the heart of the city. Perfect for business travelers and families alike.',
-    location: listing?.address || 'Downtown Area'
-  };
+  export let data: any;
   
-  function formatDate(dateString: string) {
+  interface Review {
+    id: string;
+    guestName: string;
+    rating: number;
+    comment: string;
+    date: string;
+    channel: string;
+    status: string;
+    sentiment?: string;
+    categories?: Record<string, number>;
+  }
+
+  let showAllReviews = false;
+  
+  // Reactive computations  
+  $: property = data.property || {};
+  $: reviews = data.reviews?.reviews || [];
+  $: reviewStats = data.reviews?.stats || {};
+  $: insights = data.insights || {};
+  $: displayedReviews = showAllReviews ? reviews : reviews.slice(0, 6);
+  
+  // Calculate live rating from actual reviews
+  $: calculatedRating = reviews.length > 0 
+    ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length 
+    : property.summary?.avgRating || property.avgRating || 0;
+  
+  $: approvedReviews = reviews.filter(r => r.status === 'approved');
+  $: approvalRate = reviews.length > 0 ? (approvedReviews.length / reviews.length) * 100 : 0;
+  
+  // Helper functions
+  function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric'
     });
   }
   
-  function getChannelBadge(channel: string) {
+  function formatPrice(price: number): string {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP'
+    }).format(price);
+  }
+  
+  function getChannelBadge(channel: string): string {
     const baseClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
     
     switch(channel.toLowerCase()) {
       case 'airbnb': return `${baseClass} bg-red-50 text-red-700`;
+      case 'booking': 
       case 'booking.com': return `${baseClass} bg-blue-50 text-blue-700`;
+      case 'vrbo': return `${baseClass} bg-orange-50 text-orange-700`;
       case 'google': return `${baseClass} bg-green-50 text-green-700`;
       default: return `${baseClass} bg-slate-100 text-slate-700`;
     }
   }
   
-  function renderStars(rating: number) {
-    const stars = [];
+  function getSentimentBadge(sentiment: string): string {
+    const baseClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+    
+    switch(sentiment?.toLowerCase()) {
+      case 'positive': return `${baseClass} bg-green-50 text-green-700`;
+      case 'negative': return `${baseClass} bg-red-50 text-red-700`;
+      case 'neutral': return `${baseClass} bg-yellow-50 text-yellow-700`;
+      default: return `${baseClass} bg-slate-100 text-slate-700`;
+    }
+  }
+  
+  function getStatusBadge(status: string): string {
+    const baseClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+    
+    switch(status?.toLowerCase()) {
+      case 'approved': return `${baseClass} bg-green-50 text-green-700`;
+      case 'pending': return `${baseClass} bg-yellow-50 text-yellow-700`;
+      case 'rejected': return `${baseClass} bg-red-50 text-red-700`;
+      default: return `${baseClass} bg-slate-100 text-slate-700`;
+    }
+  }
+  
+  function getRatingStars(rating: number): string {
     const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
+    const hasHalfStar = rating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
     
-    for (let i = 0; i < fullStars; i++) {
-      stars.push('full');
-    }
-    
-    if (hasHalfStar) {
-      stars.push('half');
-    }
-    
-    while (stars.length < 5) {
-      stars.push('empty');
-    }
-    
-    return stars;
+    return '★'.repeat(fullStars) + (hasHalfStar ? '☆' : '') + '☆'.repeat(emptyStars);
   }
 </script>
 
 <svelte:head>
-  <title>{listing?.title || 'Property'} - Flex Living</title>
-  <meta name="description" content="Luxury accommodation with exceptional guest reviews and premium amenities." />
+  <title>{property.name || 'Property Details'} - Reviews Dashboard</title>
 </svelte:head>
 
-{#if loading}
-  <div class="min-h-screen bg-slate-50 flex items-center justify-center">
-    <div class="text-center">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p class="text-slate-600">Loading property details...</p>
-    </div>
-  </div>
-{:else if !listing}
-  <div class="min-h-screen bg-slate-50 flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-2xl font-bold text-slate-900 mb-4">Property Not Found</h1>
-      <p class="text-slate-600 mb-6">The property you're looking for doesn't exist.</p>
-      <a href="/listings" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-        View All Properties
-      </a>
-    </div>
-  </div>
-{:else}
-  <div class="min-h-screen bg-slate-50">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b border-slate-100">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
-          <div class="flex items-center gap-8">
-            <a href="/" class="text-2xl font-bold text-slate-900">Flex Living</a>
-            <div class="hidden md:flex items-center space-x-6">
-              <a href="#overview" class="text-slate-600 hover:text-slate-900 transition-colors">Overview</a>
-              <a href="#amenities" class="text-slate-600 hover:text-slate-900 transition-colors">Amenities</a>
-              <a href="#reviews" class="text-slate-600 hover:text-slate-900 transition-colors">Reviews</a>
-              <a href="#location" class="text-slate-600 hover:text-slate-900 transition-colors">Location</a>
-            </div>
+<div class="min-h-screen bg-slate-50">
+  <!-- Navigation Header -->
+  <div class="bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-4">
+          <button 
+            class="inline-flex items-center gap-2 text-slate-600 hover:text-brand-600 font-medium transition-colors"
+            on:click={() => goto('/listings')}
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Properties
+          </button>
+          <div class="w-px h-6 bg-slate-300"></div>
+          <div>
+            <h1 class="text-xl font-semibold text-slate-900">{property.name || 'Property Details'}</h1>
+            <p class="text-sm text-slate-500">ID: {property.id}</p>
           </div>
-          <button class="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-colors">
-            Book Now
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <button 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            on:click={() => goto('/reviews')}
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+            Manage Reviews
+          </button>
+          <button
+            class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-brand-500 to-brand-600 text-white rounded-xl text-sm font-medium hover:from-brand-600 hover:to-brand-700 transition-colors shadow-sm"
+            on:click={() => window.open(`/property/${property.slug}?key=DEMO_KEY`, '_blank')}
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            Preview
           </button>
         </div>
       </div>
-    </nav>
+    </div>
+  </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Property Header -->
-      <div class="mb-8">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-2">{listing.title}</h1>
-            <div class="flex items-center gap-4 text-slate-600">
-              <div class="flex items-center gap-1">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                </svg>
-                <span>{mockPropertyData.location}</span>
-              </div>
-              <span class={getChannelBadge(listing.channel)}>{listing.channel}</span>
-            </div>
-          </div>
-          <div class="flex items-center gap-4">
-            <div class="text-right">
-              <div class="flex items-center gap-1 justify-end">
-                {#each renderStars(listing.avgRating || 0) as star}
-                  <svg class="w-4 h-4 {star === 'full' ? 'text-yellow-400 fill-current' : star === 'half' ? 'text-yellow-400' : 'text-slate-300'}" viewBox="0 0 24 24">
-                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                  </svg>
-                {/each}
-              </div>
-              <div class="text-sm text-slate-600 mt-1">
-                {(listing.avgRating || 0).toFixed(1)} • {listing.reviewCount} reviews
-              </div>
-            </div>
-          </div>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {#if data.error}
+      <!-- Error State -->
+      <div class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
         </div>
+        <h3 class="text-lg font-medium text-red-900 mb-2">Error Loading Property</h3>
+        <p class="text-red-700 mb-4">{data.error}</p>
+        <button 
+          on:click={() => window.location.reload()}
+          class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Retry
+        </button>
       </div>
-
-      <!-- Property Images -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-12" id="overview">
-        <div class="relative aspect-[4/3] rounded-2xl overflow-hidden">
-          <img 
-            src={mockPropertyData.imageGallery[0]} 
-            alt="Main property view"
-            class="w-full h-full object-cover"
-          />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          {#each mockPropertyData.imageGallery.slice(1) as image, index}
-            <div class="aspect-[4/3] rounded-2xl overflow-hidden">
-              <img 
-                src={image} 
-                alt={`Property view ${index + 2}`}
-                class="w-full h-full object-cover"
-              />
+    {:else}
+      <!-- Main Content -->
+      <div class="space-y-8">
+        <!-- Property Hero Section -->
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div class="grid lg:grid-cols-2 gap-8 p-8">
+            <!-- Property Image -->
+            <div class="aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl overflow-hidden">
+              {#if property.photo}
+                <img 
+                  src={property.photo} 
+                  alt={property.name}
+                  class="w-full h-full object-cover"
+                />
+              {:else}
+                <div class="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
+                  <svg class="w-16 h-16 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                  </svg>
+                </div>
+              {/if}
             </div>
-          {/each}
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
-        <!-- Main Content -->
-        <div class="lg:col-span-2 space-y-12">
-          <!-- Property Details -->
-          <section>
-            <div class="border-b border-slate-200 pb-6 mb-6">
-              <h2 class="text-2xl font-semibold text-slate-900 mb-4">About this place</h2>
-              <div class="flex items-center gap-8 text-slate-600 mb-4">
-                <div class="flex items-center gap-2">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            
+            <!-- Property Details -->
+            <div class="space-y-6">
+              <div>
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">{property.name}</h2>
+                <p class="text-slate-600 flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                   </svg>
-                  <span>{mockPropertyData.bedrooms} bedrooms</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11"/>
-                  </svg>
-                  <span>{mockPropertyData.bathrooms} bathrooms</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                  </svg>
-                  <span>{mockPropertyData.guestCapacity} guests</span>
-                </div>
+                  {property.address}
+                </p>
               </div>
-              <p class="text-slate-700 leading-relaxed">{mockPropertyData.description}</p>
-            </div>
-          </section>
-
-          <!-- Amenities -->
-          <section id="amenities">
-            <h2 class="text-2xl font-semibold text-slate-900 mb-6">What this place offers</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {#each mockPropertyData.amenities as amenity}
-                <div class="flex items-center gap-3 p-3 rounded-lg border border-slate-100">
-                  <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                  <span class="text-slate-700">{amenity}</span>
-                </div>
-              {/each}
-            </div>
-          </section>
-
-          <!-- Guest Reviews -->
-          <section id="reviews">
-            <div class="flex items-center justify-between mb-6">
-              <h2 class="text-2xl font-semibold text-slate-900">Guest Reviews</h2>
-              <div class="flex items-center gap-2">
-                <div class="flex items-center gap-1">
-                  {#each renderStars(listing.avgRating || 0) as star}
-                    <svg class="w-4 h-4 {star === 'full' ? 'text-yellow-400 fill-current' : star === 'half' ? 'text-yellow-400' : 'text-slate-300'}" viewBox="0 0 24 24">
+              
+              <!-- Key Metrics -->
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-slate-50 rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
                     </svg>
-                  {/each}
-                </div>
-                <span class="text-lg font-semibold text-slate-900">{(listing.avgRating || 0).toFixed(1)}</span>
-                <span class="text-slate-600">({listing.reviewCount} reviews)</span>
-              </div>
-            </div>
-
-            {#if selectedReviews.length > 0}
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {#each selectedReviews as review}
-                  <div class="bg-white rounded-xl p-6 border border-slate-100">
-                    <div class="flex items-start justify-between mb-4">
-                      <div>
-                        <h4 class="font-semibold text-slate-900">{review.guestName}</h4>
-                        <div class="flex items-center gap-2 mt-1">
-                          <span class={getChannelBadge(review.channel)}>{review.channel}</span>
-                          <span class="text-sm text-slate-500">{formatDate(review.submittedAt)}</span>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-1">
-                        {#each renderStars(review.overallRating || 0) as star}
-                          <svg class="w-4 h-4 {star === 'full' ? 'text-yellow-400 fill-current' : star === 'half' ? 'text-yellow-400' : 'text-slate-300'}" viewBox="0 0 24 24">
-                            <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                          </svg>
-                        {/each}
-                      </div>
-                    </div>
-                    <p class="text-slate-700 leading-relaxed">{review.publicReview}</p>
+                    <span class="text-sm font-medium text-slate-600">Rating</span>
                   </div>
-                {/each}
-              </div>
-            {:else}
-              <div class="text-center py-8">
-                <div class="text-slate-400 mb-2">
-                  <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                  </svg>
+                  <div class="text-2xl font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
+                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
                 </div>
-                <p class="text-slate-600">No reviews selected for display yet.</p>
-              </div>
-            {/if}
-          </section>
-        </div>
-
-        <!-- Sidebar -->
-        <div class="space-y-6">
-          <!-- Booking Card -->
-          <div class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 sticky top-6">
-            <div class="text-center mb-6">
-              <div class="text-3xl font-bold text-slate-900 mb-1">${mockPropertyData.pricePerNight}<span class="text-lg font-normal text-slate-600">/night</span></div>
-              <div class="text-sm text-slate-500">Minimum 2 nights</div>
-            </div>
-            
-            <div class="space-y-4 mb-6">
-              <div class="grid grid-cols-2 gap-2">
-                <div class="border border-slate-200 rounded-xl p-3">
-                  <div class="text-xs font-medium text-slate-600 mb-1">CHECK-IN</div>
-                  <div class="text-sm text-slate-900">Add date</div>
-                </div>
-                <div class="border border-slate-200 rounded-xl p-3">
-                  <div class="text-xs font-medium text-slate-600 mb-1">CHECK-OUT</div>
-                  <div class="text-sm text-slate-900">Add date</div>
-                </div>
-              </div>
-              <div class="border border-slate-200 rounded-xl p-3">
-                <div class="text-xs font-medium text-slate-600 mb-1">GUESTS</div>
-                <div class="text-sm text-slate-900">1 guest</div>
-              </div>
-            </div>
-            
-            <button class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-xl font-medium hover:from-blue-600 hover:to-blue-700 transition-colors mb-4">
-              Reserve
-            </button>
-            
-            <div class="text-center text-sm text-slate-500 mb-4">You won't be charged yet</div>
-            
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-slate-600">${mockPropertyData.pricePerNight} × 5 nights</span>
-                <span class="text-slate-900">${mockPropertyData.pricePerNight * 5}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-600">Cleaning fee</span>
-                <span class="text-slate-900">${mockPropertyData.cleaningFee}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-600">Service fee</span>
-                <span class="text-slate-900">${mockPropertyData.serviceFee}</span>
-              </div>
-              <hr class="my-3">
-              <div class="flex justify-between font-semibold">
-                <span class="text-slate-900">Total</span>
-                <span class="text-slate-900">${mockPropertyData.pricePerNight * 5 + mockPropertyData.cleaningFee + mockPropertyData.serviceFee}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Host Information -->
-          <div class="bg-white rounded-2xl shadow-lg border border-slate-100 p-6">
-            <h3 class="text-lg font-semibold text-slate-900 mb-4">Hosted by Sarah</h3>
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                S
-              </div>
-              <div>
-                <div class="font-medium text-slate-900">Sarah Johnson</div>
-                <div class="text-sm text-slate-500">Superhost • 2 years hosting</div>
-              </div>
-            </div>
-            <div class="space-y-2 text-sm text-slate-600">
-              <div class="flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                </svg>
-                Response rate: 100%
-              </div>
-              <div class="flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Response time: within an hour
-              </div>
-            </div>
-            <button class="w-full mt-4 border border-slate-200 text-slate-700 py-2 rounded-xl hover:bg-slate-50 transition-colors">
-              Contact Host
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if} 
-            src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=400&h=300" 
-            alt="Bedroom view"
-            class="w-full h-full object-cover"
-          />
-        </div>
-        <div class="aspect-[4/3] rounded-2xl overflow-hidden relative">
-          <img 
-            src="https://images.unsplash.com/photo-1540518614846-7eded433c457?auto=format&fit=crop&w=400&h=300" 
-            alt="Bathroom view"
-            class="w-full h-full object-cover"
-          />
-          <div class="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <span class="text-white font-medium">+12 more</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Property Details Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-      <!-- Main Content -->
-      <div class="lg:col-span-2 space-y-8">
-        <!-- Property Description -->
-        <section class="bg-white rounded-2xl shadow-card border border-slate-100 p-6">
-          <h2 class="text-2xl font-semibold text-slate-900 mb-4">About this space</h2>
-          <div class="prose prose-slate max-w-none">
-            <p class="text-slate-600 leading-relaxed">
-              Experience luxury living in this beautifully designed space that combines modern amenities with comfort and style. 
-              Perfect for both business and leisure travelers, this property offers a serene retreat while keeping you connected 
-              to the vibrant city life.
-            </p>
-            <p class="text-slate-600 leading-relaxed">
-              The space features thoughtfully curated interiors, premium furnishings, and all the amenities you need for a 
-              comfortable stay. Whether you're here for a few days or an extended period, you'll find everything you need to 
-              feel at home.
-            </p>
-          </div>
-        </section>
-
-        <!-- Amenities -->
-        <section class="bg-white rounded-2xl shadow-card border border-slate-100 p-6" id="amenities">
-          <h2 class="text-2xl font-semibold text-slate-900 mb-6">Amenities</h2>
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {#each [
-              { name: 'WiFi', icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0' },
-              { name: 'Kitchen', icon: 'M3 6h18M3 6v14a2 2 0 002 2h14a2 2 0 002-2V6M3 6V4a2 2 0 012-2h14a2 2 0 012 2v2' },
-              { name: 'Parking', icon: 'M9 17a2 2 0 11-4 0 2 2 0 014 0zM21 17a2 2 0 11-4 0 2 2 0 014 0zM6 12V4a2 2 0 012-2h8a2 2 0 012 2v8' },
-              { name: 'Air Conditioning', icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z' },
-              { name: 'TV', icon: 'M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z' },
-              { name: 'Washer', icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z' }
-            ] as amenity}
-              <div class="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
-                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={amenity.icon}/>
-                </svg>
-                <span class="text-sm font-medium text-slate-700">{amenity.name}</span>
-              </div>
-            {/each}
-          </div>
-        </section>
-
-        <!-- Guest Reviews Section -->
-        <section class="bg-white rounded-2xl shadow-card border border-slate-100 p-6" id="reviews">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-semibold text-slate-900">Guest Reviews</h2>
-            <div class="flex items-center gap-2">
-              <div class="flex items-center gap-1">
-                {#each renderStars(property?.avgRating || 4.8) as star}
-                  <svg class="w-4 h-4 {star === 'full' ? 'text-yellow-400 fill-current' : star === 'half' ? 'text-yellow-400' : 'text-slate-300'}" viewBox="0 0 24 24">
-                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                  </svg>
-                {/each}
-              </div>
-              <span class="text-lg font-semibold text-slate-900">{(property?.avgRating || 4.8).toFixed(1)}</span>
-              <span class="text-slate-500">({selectedReviews.length} reviews)</span>
-            </div>
-          </div>
-
-          {#if selectedReviews.length > 0}
-            <div class="space-y-6">
-              {#each selectedReviews as review}
-                <div class="border-b border-slate-100 last:border-b-0 pb-6 last:pb-0">
-                  <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full flex items-center justify-center text-white font-semibold">
-                        {review.guestName.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div class="font-medium text-slate-900">{review.guestName}</div>
-                        <div class="text-sm text-slate-500">{formatDate(review.submittedAt)}</div>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span class={getChannelBadge(review.channel)}>{review.channel}</span>
-                      {#if review.overallRating}
-                        <div class="flex items-center gap-1">
-                          <svg class="w-4 h-4 text-yellow-400 fill-current" viewBox="0 0 24 24">
-                            <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                          </svg>
-                          <span class="text-sm font-medium text-slate-700">{review.overallRating}/10</span>
-                        </div>
-                      {/if}
-                    </div>
+                
+                <div class="bg-slate-50 rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                    </svg>
+                    <span class="text-sm font-medium text-slate-600">Reviews</span>
                   </div>
-                  <p class="text-slate-600 leading-relaxed">{review.publicReview}</p>
-                  
-                  {#if review.categoriesJson}
-                    {@const categories = JSON.parse(review.categoriesJson)}
-                    {#if categories.length > 0}
-                      <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {#each categories as category}
-                          <div class="text-center p-2 bg-slate-50 rounded-lg">
-                            <div class="text-xs font-medium text-slate-600 mb-1">{category.category}</div>
-                            <div class="text-sm font-semibold text-slate-900">{category.rating}/10</div>
-                          </div>
-                        {/each}
+                  <div class="text-2xl font-bold text-slate-900">{reviews.length}</div>
+                  <div class="text-xs text-slate-500">{Math.round(approvalRate)}% approved ({approvedReviews.length} of {reviews.length})</div>
+                </div>
+              </div>
+              
+              <!-- Property Features -->
+              {#if property.hostaway}
+                <div class="space-y-3">
+                  <h3 class="font-semibold text-slate-900">Property Features</h3>
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    {#if property.hostaway.bedroomsNumber !== undefined}
+                      <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 21v-4a2 2 0 012-2h4a2 2 0 012 2v4"/>
+                        </svg>
+                        <span>{property.hostaway.bedroomsNumber} Bedrooms</span>
                       </div>
                     {/if}
+                    {#if property.hostaway.bathroomsNumber !== undefined}
+                      <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11"/>
+                        </svg>
+                        <span>{property.hostaway.bathroomsNumber} Bathrooms</span>
+                      </div>
+                    {/if}
+                    {#if property.hostaway.personCapacity}
+                      <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                        <span>{property.hostaway.personCapacity} Guests</span>
+                      </div>
+                    {/if}
+                    {#if property.hostaway.price}
+                      <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+                        </svg>
+                        <span>{formatPrice(property.hostaway.price)}/night</span>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+              
+              <!-- Channels -->
+              {#if property.channel}
+                <div class="space-y-3">
+                  <h3 class="font-semibold text-slate-900">Available on</h3>
+                  <div class="flex flex-wrap gap-2">
+                    <span class={getChannelBadge(property.channel)}>
+                      {property.channel.charAt(0).toUpperCase() + property.channel.slice(1)}
+                    </span>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+          
+          <!-- Property Description -->
+          {#if property.description}
+            <div class="border-t border-slate-200 p-8">
+              <h3 class="font-semibold text-slate-900 mb-3">Description</h3>
+              <p class="text-slate-600 leading-relaxed">{property.description}</p>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Comprehensive Property Information -->
+        {#if property.hostaway}
+          <!-- Image Gallery -->
+          {#if property.hostaway.images && property.hostaway.images.length > 0}
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-900">Photo Gallery</h3>
+                <p class="text-slate-600 mt-1">{property.hostaway.images.length} photos</p>
+              </div>
+              <div class="p-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {#each property.hostaway.images as image, index}
+                    <div class="aspect-[4/3] bg-slate-100 rounded-xl overflow-hidden group">
+                      <img 
+                        src={image.url} 
+                        alt={image.caption || `Photo ${index + 1}`}
+                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Amenities & Features -->
+          {#if property.hostaway.amenities && property.hostaway.amenities.length > 0}
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-900">Amenities & Features</h3>
+                <p class="text-slate-600 mt-1">{property.hostaway.amenities.length} amenities available</p>
+              </div>
+              <div class="p-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {#each property.hostaway.amenities as amenity}
+                    <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                      <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span class="text-slate-700 text-sm">{amenity.name}</span>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Policies & House Rules -->
+          {#if property.hostaway.policies}
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-900">Stay Policies & House Rules</h3>
+                <p class="text-slate-600 mt-1">Important information for your stay</p>
+              </div>
+              <div class="p-8 space-y-8">
+                <!-- Check-in & Check-out -->
+                <div>
+                  <h4 class="font-semibold text-slate-900 mb-4">Check-in & Check-out</h4>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                      <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
+                      </svg>
+                      <div>
+                        <div class="font-medium text-slate-900">Check-in time</div>
+                        <div class="text-slate-600">{property.hostaway.policies.checkInTime}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                      <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                      </svg>
+                      <div>
+                        <div class="font-medium text-slate-900">Check-out time</div>
+                        <div class="text-slate-600">{property.hostaway.policies.checkOutTime}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- House Rules -->
+                <div>
+                  <h4 class="font-semibold text-slate-900 mb-4">House Rules</h4>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-center gap-3">
+                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.smokingAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
+                        {#if property.hostaway.policies.smokingAllowed}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                          </svg>
+                        {:else}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                          </svg>
+                        {/if}
+                      </div>
+                      <span class="text-slate-700">{property.hostaway.policies.smokingAllowed ? 'Smoking allowed' : 'No smoking'}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.petsAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
+                        {#if property.hostaway.policies.petsAllowed}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                          </svg>
+                        {:else}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                          </svg>
+                        {/if}
+                      </div>
+                      <span class="text-slate-700">{property.hostaway.policies.petsAllowed ? 'Pets allowed' : 'No pets'}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.partiesEventsAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
+                        {#if property.hostaway.policies.partiesEventsAllowed}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                          </svg>
+                        {:else}
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                          </svg>
+                        {/if}
+                      </div>
+                      <span class="text-slate-700">{property.hostaway.policies.partiesEventsAllowed ? 'Parties/events allowed' : 'No parties or events'}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.securityDepositRequired ? 'bg-yellow-100 text-yellow-600' : 'bg-green-100 text-green-600'} flex items-center justify-center">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                        </svg>
+                      </div>
+                      <span class="text-slate-700">{property.hostaway.policies.securityDepositRequired ? 'Security deposit required' : 'No security deposit required'}</span>
+                    </div>
+                  </div>
+                  {#if property.hostaway.policies.houseRules}
+                    <div class="mt-4 p-4 bg-blue-50 rounded-xl">
+                      <div class="font-medium text-blue-900 mb-2">Additional House Rules</div>
+                      <p class="text-blue-800 text-sm">{property.hostaway.policies.houseRules}</p>
+                    </div>
                   {/if}
+                </div>
+
+                <!-- Cancellation Policy -->
+                {#if property.hostaway.policies.cancellationPolicy}
+                  <div>
+                    <h4 class="font-semibold text-slate-900 mb-4">Cancellation Policy</h4>
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                      <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                        </svg>
+                        <div>
+                          <div class="font-medium text-slate-900 capitalize">{property.hostaway.policies.cancellationPolicy} cancellation policy</div>
+                          <div class="text-slate-600 text-sm">
+                            {#if property.hostaway.policies.cancellationPolicy === 'flexible'}
+                              Full refund up to 14 days before check-in
+                            {:else if property.hostaway.policies.cancellationPolicy === 'moderate'}
+                              Full refund up to 7 days before check-in
+                            {:else if property.hostaway.policies.cancellationPolicy === 'strict'}
+                              Full refund up to 48 hours before check-in
+                            {:else}
+                              Check the full terms for details
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Location & Maps -->
+          {#if property.hostaway.location}
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-900">Location</h3>
+                <p class="text-slate-600 mt-1">Exact location for maps integration</p>
+              </div>
+              <div class="p-8">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <!-- Address Details -->
+                  <div class="space-y-4">
+                    <div class="flex items-start gap-3">
+                      <svg class="w-5 h-5 text-slate-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      </svg>
+                      <div>
+                        <div class="font-medium text-slate-900">Full Address</div>
+                        <div class="text-slate-600 text-sm">{property.hostaway.location.address}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      <div>
+                        <div class="font-medium text-slate-900">Location Details</div>
+                        <div class="text-slate-600 text-sm">{property.hostaway.location.city}, {property.hostaway.location.state}, {property.hostaway.location.country}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                      </svg>
+                      <div>
+                        <div class="font-medium text-slate-900">Coordinates</div>
+                        <div class="text-slate-600 text-sm font-mono">{property.hostaway.location.lat}, {property.hostaway.location.lng}</div>
+                      </div>
+                    </div>
+                    {#if property.hostaway.location.zipcode}
+                      <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                        </svg>
+                        <div>
+                          <div class="font-medium text-slate-900">Postal Code</div>
+                          <div class="text-slate-600 text-sm">{property.hostaway.location.zipcode}</div>
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+
+                  <!-- Map Placeholder -->
+                  <div class="bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl h-64 flex items-center justify-center">
+                    <div class="text-center">
+                      <svg class="w-12 h-12 text-slate-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                      </svg>
+                      <div class="text-slate-600 font-medium">Interactive Map</div>
+                      <div class="text-slate-500 text-sm">Ready for maps integration</div>
+                      <div class="text-xs text-slate-400 mt-2">Lat: {property.hostaway.location.lat}<br/>Lng: {property.hostaway.location.lng}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {/if}
+        {/if}
+
+        <!-- Reviews Section -->
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <!-- Reviews Header -->
+          <div class="p-8 border-b border-slate-200">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-xl font-semibold text-slate-900">Guest Reviews</h3>
+                <p class="text-slate-600 mt-1">
+                  {reviews.length || 0} total reviews 
+                  {#if reviewStats.averageRating}
+                    • {reviewStats.averageRating.toFixed(1)} average rating
+                  {/if}
+                </p>
+              </div>
+              
+              {#if reviewStats && reviewStats.sentimentBreakdown}
+                <div class="flex items-center gap-6">
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-green-600">{reviewStats.sentimentBreakdown.positive || 0}</div>
+                    <div class="text-xs text-slate-500">Positive</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-yellow-600">{reviewStats.sentimentBreakdown.neutral || 0}</div>
+                    <div class="text-xs text-slate-500">Neutral</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-red-600">{reviewStats.sentimentBreakdown.negative || 0}</div>
+                    <div class="text-xs text-slate-500">Negative</div>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+          
+          <!-- Review Statistics -->
+          {#if reviewStats.categoryBreakdown && Object.keys(reviewStats.categoryBreakdown).length > 0}
+            <div class="p-8 border-b border-slate-200 bg-slate-50">
+              <h4 class="font-semibold text-slate-900 mb-4">Category Ratings</h4>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {#each Object.entries(reviewStats.categoryBreakdown) as [category, rating]}
+                  <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
+                    <div class="text-sm font-medium text-slate-900 capitalize mb-1">{category}</div>
+                    <div class="text-lg font-bold text-slate-900">{rating.toFixed(1)}</div>
+                    <div class="text-xs text-slate-500">{getRatingStars(rating)}</div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Reviews List -->
+          <div class="p-8">
+            {#if reviews.length === 0}
+              <div class="text-center py-12">
+                <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-medium text-slate-900 mb-2">No Reviews Yet</h3>
+                <p class="text-slate-500">This property hasn't received any reviews yet.</p>
+              </div>
+            {:else}
+              <div class="space-y-6">
+                {#each displayedReviews as review}
+                  <div class="border border-slate-200 rounded-xl p-6">
+                    <!-- Review Header -->
+                    <div class="flex items-start justify-between mb-4">
+                      <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full flex items-center justify-center">
+                          <span class="text-white font-medium text-sm">
+                            {review.guestName ? review.guestName.charAt(0).toUpperCase() : 'G'}
+                          </span>
+                        </div>
+                        <div>
+                          <div class="font-medium text-slate-900">{review.guestName || 'Anonymous Guest'}</div>
+                          <div class="flex items-center gap-2 text-sm text-slate-500">
+                            <span>{formatDate(review.date)}</span>
+                            <span>•</span>
+                            <span class={getChannelBadge(review.channel)}>{review.channel}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1">
+                          <span class="text-lg">{getRatingStars(review.rating)}</span>
+                          <span class="text-sm font-medium text-slate-900">{review.rating}</span>
+                        </div>
+                        {#if review.sentiment}
+                          <span class={getSentimentBadge(review.sentiment)}>{review.sentiment}</span>
+                        {/if}
+                        {#if review.status}
+                          <span class={getStatusBadge(review.status)}>{review.status}</span>
+                        {/if}
+                      </div>
+                    </div>
+                    
+                    <!-- Review Content -->
+                    <div class="text-slate-700 leading-relaxed mb-4">
+                      {review.comment || 'No comment provided.'}
+                    </div>
+                    
+                    <!-- Category Ratings -->
+                    {#if review.categories && Object.keys(review.categories).length > 0}
+                      <div class="border-t border-slate-200 pt-4">
+                        <h5 class="text-sm font-medium text-slate-900 mb-2">Category Ratings</h5>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {#each Object.entries(review.categories) as [category, rating]}
+                            <div class="text-center p-2 bg-slate-50 rounded-lg">
+                              <div class="text-xs text-slate-600 capitalize">{category}</div>
+                              <div class="text-sm font-medium text-slate-900">{rating}/5</div>
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+                
+                <!-- Show More Button -->
+                {#if reviews.length > 6 && !showAllReviews}
+                  <div class="text-center pt-4">
+                    <button
+                      on:click={() => showAllReviews = true}
+                      class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                      Show {reviews.length - 6} More Reviews
+                    </button>
+                  </div>
+                {:else if showAllReviews && reviews.length > 6}
+                  <div class="text-center pt-4">
+                    <button
+                      on:click={() => showAllReviews = false}
+                      class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                      </svg>
+                      Show Less
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+        
+        <!-- Insights Section -->
+        {#if insights && Object.keys(insights).length > 0}
+          <div class="bg-white rounded-2xl border border-slate-200 p-8">
+            <h3 class="text-xl font-semibold text-slate-900 mb-6">Property Insights</h3>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {#each Object.entries(insights) as [key, value]}
+                <div class="bg-slate-50 rounded-xl p-4">
+                  <div class="text-sm font-medium text-slate-600 capitalize mb-1">
+                    {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
+                  </div>
+                  <div class="text-lg font-semibold text-slate-900">
+                    {typeof value === 'number' ? value.toFixed(1) : value}
+                  </div>
                 </div>
               {/each}
             </div>
-          {:else}
-            <div class="text-center py-8">
-              <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium text-slate-900 mb-2">No reviews yet</h3>
-              <p class="text-slate-500">Be the first to leave a review for this property.</p>
-            </div>
-          {/if}
-        </section>
+          </div>
+        {/if}
       </div>
-
-      <!-- Sidebar -->
-      <div class="space-y-6">
-        <!-- Booking Card -->
-        <div class="bg-white rounded-2xl shadow-card border border-slate-100 p-6 sticky top-6">
-          <div class="text-center mb-6">
-            <div class="text-3xl font-bold text-slate-900 mb-1">$120<span class="text-lg font-normal text-slate-600">/night</span></div>
-            <div class="text-sm text-slate-500">Minimum 2 nights</div>
-          </div>
-          
-          <div class="space-y-4 mb-6">
-            <div class="grid grid-cols-2 gap-2">
-              <div class="border border-slate-200 rounded-xl p-3">
-                <div class="text-xs font-medium text-slate-600 mb-1">CHECK-IN</div>
-                <div class="text-sm text-slate-900">Add date</div>
-              </div>
-              <div class="border border-slate-200 rounded-xl p-3">
-                <div class="text-xs font-medium text-slate-600 mb-1">CHECK-OUT</div>
-                <div class="text-sm text-slate-900">Add date</div>
-              </div>
-            </div>
-            <div class="border border-slate-200 rounded-xl p-3">
-              <div class="text-xs font-medium text-slate-600 mb-1">GUESTS</div>
-              <div class="text-sm text-slate-900">1 guest</div>
-            </div>
-          </div>
-          
-          <button class="w-full bg-gradient-to-r from-brand-500 to-brand-600 text-white py-3 rounded-xl font-medium hover:from-brand-600 hover:to-brand-700 transition-colors mb-4">
-            Reserve
-          </button>
-          
-          <div class="text-center text-sm text-slate-500 mb-4">You won't be charged yet</div>
-          
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between">
-              <span class="text-slate-600">$120 × 5 nights</span>
-              <span class="text-slate-900">$600</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-slate-600">Cleaning fee</span>
-              <span class="text-slate-900">$50</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-slate-600">Service fee</span>
-              <span class="text-slate-900">$87</span>
-            </div>
-            <hr class="my-3">
-            <div class="flex justify-between font-semibold">
-              <span class="text-slate-900">Total</span>
-              <span class="text-slate-900">$737</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Host Information -->
-        <div class="bg-white rounded-2xl shadow-card border border-slate-100 p-6">
-          <h3 class="text-lg font-semibold text-slate-900 mb-4">Hosted by Sarah</h3>
-          <div class="flex items-center gap-3 mb-4">
-            <div class="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full flex items-center justify-center text-white font-semibold">
-              S
-            </div>
-            <div>
-              <div class="font-medium text-slate-900">Sarah Johnson</div>
-              <div class="text-sm text-slate-500">Superhost • 2 years hosting</div>
-            </div>
-          </div>
-          <div class="space-y-2 text-sm text-slate-600">
-            <div class="flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-              </svg>
-              Response rate: 100%
-            </div>
-            <div class="flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              Response time: within an hour
-            </div>
-          </div>
-          <button class="w-full mt-4 border border-slate-200 text-slate-700 py-2 rounded-xl hover:bg-slate-50 transition-colors">
-            Contact Host
-          </button>
-        </div>
-      </div>
-    </div>
+    {/if}
   </div>
 </div>

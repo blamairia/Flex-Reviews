@@ -130,7 +130,7 @@
           </button>
           <button
             class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-brand-500 to-brand-600 text-white rounded-xl text-sm font-medium hover:from-brand-600 hover:to-brand-700 transition-colors shadow-sm"
-            on:click={() => window.open(`/preview/${property.slug}?key=DEMO_KEY`, '_blank')}
+            on:click={() => window.open(`/property/${property.slug}?key=DEMO_KEY`, '_blank')}
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>

@@ -1,5 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
+import { ReviewService } from '$lib/db/reviewService';
+import { db } from '$lib/db/drizzle';
+import { reviews } from '$lib/db/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -22,26 +26,58 @@ export const POST: RequestHandler = async ({ request }) => {
 
     console.log(`🔄 Performing batch action "${action}" on reviews:`, ids);
 
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 500));
+    let updatedCount = 0;
+    const updatedReviews = [];
 
-    // In a real implementation, this would update the database
-    // For now, we'll just simulate success
-    const updatedReviews = ids.map(id => ({
-      id,
-      action,
-      status: action === 'feature' ? 'updated' : action === 'approve' ? 'approved' : 'rejected',
-      updatedAt: new Date().toISOString()
-    }));
+    // Process each review
+    for (const reviewId of ids) {
+      try {
+        let updateData: any = {
+          updatedAt: new Date().toISOString()
+        };
 
-    console.log(`✅ Successfully processed ${action} action for ${ids.length} review(s)`);
+        switch (action) {
+          case 'approve':
+            updateData.status = 'approved';
+            break;
+          case 'reject':
+            updateData.status = 'rejected';
+            break;
+          case 'feature':
+            updateData.selectedForWeb = 1;
+            break;
+        }
+
+        // Update the review in database
+        const result = await db
+          .update(reviews)
+          .set(updateData)
+          .where(eq(reviews.id, reviewId));
+
+        if (result.changes > 0) {
+          updatedCount++;
+          updatedReviews.push({
+            id: reviewId,
+            action,
+            status: updateData.status || 'updated',
+            updatedAt: updateData.updatedAt
+          });
+        }
+      } catch (reviewError) {
+        console.error(`❌ Error updating review ${reviewId}:`, reviewError);
+      }
+    }
+
+    console.log(`✅ Successfully processed ${action} action for ${updatedCount}/${ids.length} review(s)`);
 
     return json({
       success: true,
-      message: `Successfully ${action}${action.endsWith('e') ? 'd' : 'ed'} ${ids.length} review(s)`,
+      message: `Successfully ${action}${action.endsWith('e') ? 'd' : 'ed'} ${updatedCount} review(s)`,
       updatedReviews,
       action,
-      affectedIds: ids
+      affectedIds: ids,
+      processedCount: updatedCount,
+      totalRequested: ids.length
     });
 
   } catch (error) {
@@ -49,7 +85,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(
       {
         success: false,
-        message: 'Failed to process batch action',
+        message: 'Internal server error',
         error: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

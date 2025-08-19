@@ -1,28 +1,159 @@
-import type { ServerLoad } from '@sveltejs/kit';
-import { ListingService } from '$lib/db/listingService';
-import { ReviewService } from '$lib/db/reviewService';
-import { error } from '@sveltejs/kit';
-
-export const load: ServerLoad = async ({ params }) => {
+export const load = async ({ params, fetch }: any) => {
   try {
+    // Extract property ID from slug (e.g., "property-346994" -> "346994")
     const slug = params.slug;
+    const id = slug.replace('property-', '');
+    console.log(`🏠 Loading property preview page for slug: ${slug}, extracted ID: ${id}`);
     
-    // Get property by slug (we'll need to add this method)
-    const property = await ListingService.getListingBySlug(slug);
+    // Get comprehensive property details from our enhanced properties API
+    const propertyUrl = `/api/properties/${id}`;
+    console.log(`📡 Fetching property from: ${propertyUrl}`);
+    const propertyRes = await fetch(propertyUrl);
     
-    if (!property) {
-      throw error(404, 'Property not found');
+    if (!propertyRes.ok) {
+      throw new Error(`Property API request failed: ${propertyRes.status} ${propertyRes.statusText}`);
     }
     
-    // Get selected reviews for this property
-    const selectedReviews = await ReviewService.getSelectedReviewsForProperty(property.id);
+    const propertyText = await propertyRes.text();
+    console.log(`📄 Property response preview: ${propertyText.substring(0, 100)}...`);
     
-    return {
+    let propertyData;
+    try {
+      propertyData = JSON.parse(propertyText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse property response as JSON:', parseError);
+      console.log('📄 Full response content:', propertyText);
+      throw new Error(`Invalid JSON response from property API: ${parseError}`);
+    }
+    
+    if (propertyData.status !== 'ok') {
+      throw new Error(`Property not found: ${propertyData.message || 'Unknown error'}`);
+    }
+
+    const property = propertyData.result;
+    
+    // Get all reviews and filter for this property
+    const reviewsUrl = `/api/reviews`;
+    console.log(`📡 Fetching reviews from: ${reviewsUrl}`);
+    const reviewsRes = await fetch(reviewsUrl);
+    
+    let propertyReviews = [];
+    let reviewStats = {};
+    
+    if (reviewsRes.ok) {
+      try {
+        const reviewsText = await reviewsRes.text();
+        const reviewsData = JSON.parse(reviewsText);
+        
+        if (reviewsData.success && reviewsData.reviews) {
+          // Filter reviews for this specific property and show only approved ones for preview
+          const allReviews = reviewsData.reviews;
+          
+          propertyReviews = allReviews.filter((review: any) => {
+            const isThisProperty = review.listingId === id || review.listingId === parseInt(id) || review.listingId.toString() === id;
+            const isApproved = review.status === 'approved';
+            return isThisProperty && isApproved;
+          });
+          
+          console.log(`🔍 Found ${propertyReviews.length} approved reviews for property ${id} (preview mode)`);
+          
+          // Calculate basic stats from filtered reviews
+          if (propertyReviews.length > 0) {
+            const totalRating = propertyReviews.reduce((sum: number, review: any) => sum + review.overallRating, 0);
+            const averageRating = totalRating / propertyReviews.length;
+            
+            // Count by sentiment/status
+            const approvedReviews = propertyReviews.filter((r: any) => r.status === 'approved');
+            const channelBreakdown = propertyReviews.reduce((acc: any, review: any) => {
+              acc[review.channel] = (acc[review.channel] || 0) + 1;
+              return acc;
+            }, {});
+            
+            reviewStats = {
+              totalReviews: propertyReviews.length,
+              averageRating: Math.round(averageRating * 10) / 10,
+              approvedCount: approvedReviews.length,
+              approvalRate: approvedReviews.length / propertyReviews.length,
+              channelBreakdown,
+              sentimentBreakdown: {
+                positive: propertyReviews.filter((r: any) => r.overallRating >= 4).length,
+                neutral: propertyReviews.filter((r: any) => r.overallRating === 3).length,
+                negative: propertyReviews.filter((r: any) => r.overallRating <= 2).length
+              },
+              categoryBreakdown: {
+                cleanliness: averageRating,
+                location: averageRating,
+                communication: averageRating,
+                value: averageRating
+              }
+            };
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to parse reviews response:', error);
+      }
+    }
+    
+    // Transform reviews to match component expectations
+    const transformedReviews = propertyReviews.map((review: any) => ({
+      id: review.id,
+      guestName: review.guestName,
+      rating: review.overallRating,
+      comment: review.publicReview,
+      date: review.submittedAt,
+      channel: review.channel,
+      status: review.status,
+      sentiment: review.overallRating >= 4 ? 'positive' : (review.overallRating === 3 ? 'neutral' : 'negative'),
+      categories: review.categoriesJson ? JSON.parse(review.categoriesJson).reduce((acc: any, cat: string) => {
+        acc[cat] = review.overallRating; // Use overall rating for each category
+        return acc;
+      }, {}) : {}
+    }));
+    
+    // Get property-specific insights
+    const insightsUrl = `/api/properties/${id}/insights`;
+    console.log(`📡 Fetching insights from: ${insightsUrl}`);
+    const insightsRes = await fetch(insightsUrl);
+    
+    let insightsData = { status: 'error', result: {} };
+    if (insightsRes.ok) {
+      try {
+        const insightsText = await insightsRes.text();
+        insightsData = JSON.parse(insightsText);
+      } catch (error) {
+        console.warn('⚠️ Failed to parse insights response:', error);
+      }
+    }
+    
+    console.log(`✅ Successfully loaded property details for ${property.name || property.id}`);
+    
+    return { 
       property,
-      selectedReviews
+      reviews: {
+        reviews: transformedReviews,
+        stats: reviewStats,
+        pagination: { 
+          total: propertyReviews.length,
+          limit: 50,
+          offset: 0
+        }
+      },
+      insights: insightsData.status === 'ok' ? insightsData.result : {}
     };
-  } catch (err) {
-    console.error('Error loading property:', err);
-    throw error(404, 'Property not found');
+  } catch (error) {
+    console.error('Failed to load property details:', error);
+    return { 
+      property: { 
+        id: params.slug.replace('property-', ''), 
+        name: `Property ${params.slug.replace('property-', '')}`, 
+        slug: params.slug,
+        address: 'Address not available',
+        summary: { avgRating: 0, reviews: 0, approvedPct: 0 }
+      }, 
+      reviews: { reviews: [], pagination: { total: 0 }, stats: {} },
+      stats: {},
+      insights: {},
+      error: error instanceof Error ? error.message : 'Failed to load property data'
+    };
   }
 };
