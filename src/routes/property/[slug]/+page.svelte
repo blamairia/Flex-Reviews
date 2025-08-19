@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
   
   export let data: any;
   
@@ -19,71 +20,199 @@
 
   let showAllReviews = false;
   let isLoading = false;
+  let galleryOpen = false;
+  let activeImageIndex = 0;
+  let bookingSheetOpen = false;
+  let showFullDescription = false;
+  let activeSection = 'overview';
+  let amenitiesModalOpen = false;
+  let sidebarCollapsed = false;
   
   // Reactive computations  
   $: property = data.property || {};
   $: reviews = data.reviews?.reviews || [];
-  $: reviewStats = data.reviews?.stats || {};
   $: pagination = data.reviews?.pagination || { total: 0, limit: 25, offset: 0 };
   $: insights = data.insights || {};
+  
   // Filter reviews by approval status for customer preview
-  $: approvedReviews = reviews.filter(r => r.status === 'approved'); // Only show approved reviews on property page
+  $: approvedReviews = reviews.filter(r => r.status === 'approved');
   $: displayedReviews = showAllReviews ? approvedReviews : approvedReviews.slice(0, 6);
   
   // Calculate rating from approved reviews only (customer view)
   $: calculatedRating = approvedReviews.length > 0 
     ? approvedReviews.reduce((sum: number, review: any) => sum + review.rating, 0) / approvedReviews.length 
     : property.summary?.avgRating || property.avgRating || 0;
+
+  // Gallery images
+  $: galleryImages = property.hostaway?.images || [];
+  $: heroImages = galleryImages.slice(0, 5);
   
-  // Pagination calculations
-  $: totalPages = Math.ceil(pagination.total / pagination.limit);
-  $: currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
-  $: hasMore = pagination.offset + pagination.limit < pagination.total;
-  
-  // Load more reviews function
-  async function loadMoreReviews() {
-    if (isLoading || !hasMore) return;
+  // Highlights chips
+  $: highlights = [
+    property.hostaway?.personCapacity && `${property.hostaway.personCapacity} guests`,
+    property.hostaway?.bedroomsNumber && `${property.hostaway.bedroomsNumber} bedrooms`,
+    property.hostaway?.bathroomsNumber && `${property.hostaway.bathroomsNumber} bathrooms`,
+    property.hostaway?.price && formatPrice(property.hostaway.price) + '/night',
+    property.hostaway?.amenities?.find(a => a.name?.toLowerCase().includes('wifi')) && 'WiFi'
+  ].filter(Boolean);
+
+  // Amenities grouping
+  function groupAmenities(amenities: any[]) {
+    if (!amenities) return {};
     
-    isLoading = true;
-    try {
-      const newOffset = pagination.offset + pagination.limit;
-      const response = await fetch(`/api/reviews?listingId=${property.id}&limit=${pagination.limit}&offset=${newOffset}`);
-      const result = await response.json();
-      
-      if (result.success && result.result?.reviews) {
-        // Append new reviews to existing ones
-        reviews = [...reviews, ...result.result.reviews];
-        pagination = result.result.pagination;
+    const groups: Record<string, any[]> = {
+      'Essentials': [],
+      'Kitchen': [],
+      'Laundry': [],
+      'Entertainment': [],
+      'Safety': [],
+      'Accessibility': []
+    };
+    
+    amenities.forEach(amenity => {
+      const name = amenity.name?.toLowerCase() || '';
+      if (name.includes('wifi') || name.includes('internet') || name.includes('heating') || name.includes('air conditioning')) {
+        groups.Essentials.push(amenity);
+      } else if (name.includes('kitchen') || name.includes('refrigerator') || name.includes('microwave') || name.includes('dishwasher')) {
+        groups.Kitchen.push(amenity);
+      } else if (name.includes('washing') || name.includes('dryer') || name.includes('laundry')) {
+        groups.Laundry.push(amenity);
+      } else if (name.includes('tv') || name.includes('netflix') || name.includes('entertainment')) {
+        groups.Entertainment.push(amenity);
+      } else if (name.includes('smoke') || name.includes('detector') || name.includes('security') || name.includes('safe')) {
+        groups.Safety.push(amenity);
+      } else if (name.includes('accessible') || name.includes('wheelchair')) {
+        groups.Accessibility.push(amenity);
+      } else {
+        groups.Essentials.push(amenity);
       }
-    } catch (error) {
-      console.error('Failed to load more reviews:', error);
-    } finally {
-      isLoading = false;
+    });
+    
+    // Remove empty groups
+    Object.keys(groups).forEach(key => {
+      if (groups[key].length === 0) {
+        delete groups[key];
+      }
+    });
+    
+    return groups;
+  }
+  
+  $: amenityGroups = groupAmenities(property.hostaway?.amenities);
+
+  // Gallery functions
+  function openGallery(index: number) {
+    activeImageIndex = index;
+    galleryOpen = true;
+    if (browser) {
+      document.body.style.overflow = 'hidden';
     }
   }
   
-  // Show all reviews function
-  async function toggleShowAllReviews() {
-    if (!showAllReviews) {
-      // Load all reviews if not already loaded
-      if (reviews.length < pagination.total) {
-        isLoading = true;
-        try {
-          const response = await fetch(`/api/reviews?listingId=${property.id}&limit=${pagination.total}&offset=0`);
-          const result = await response.json();
-          
-          if (result.success && result.result?.reviews) {
-            reviews = result.result.reviews;
-            pagination = result.result.pagination;
-          }
-        } catch (error) {
-          console.error('Failed to load all reviews:', error);
-        } finally {
-          isLoading = false;
-        }
+  function closeGallery() {
+    galleryOpen = false;
+    if (browser) {
+      document.body.style.overflow = '';
+    }
+  }
+  
+  function nextImage() {
+    activeImageIndex = (activeImageIndex + 1) % galleryImages.length;
+  }
+  
+  function prevImage() {
+    activeImageIndex = (activeImageIndex - 1 + galleryImages.length) % galleryImages.length;
+  }
+
+  // Keyboard navigation
+  function handleKeydown(event: KeyboardEvent) {
+    if (galleryOpen) {
+      switch (event.key) {
+        case 'Escape':
+          closeGallery();
+          break;
+        case 'ArrowLeft':
+          prevImage();
+          break;
+        case 'ArrowRight':
+          nextImage();
+          break;
+      }
+    } else if (amenitiesModalOpen && event.key === 'Escape') {
+      amenitiesModalOpen = false;
+    } else if (event.key === 'b' && event.ctrlKey) {
+      // Ctrl+B to toggle sidebar
+      event.preventDefault();
+      sidebarCollapsed = !sidebarCollapsed;
+    }
+  }
+
+  // Scroll spy for anchor navigation
+  function updateActiveSection() {
+    if (!browser) return;
+    
+    const sections = ['overview', 'amenities', 'reviews', 'location', 'policies'];
+    const scrollTop = window.scrollY + 100;
+    
+    for (let i = sections.length - 1; i >= 0; i--) {
+      const element = document.getElementById(sections[i]);
+      if (element && element.offsetTop <= scrollTop) {
+        activeSection = sections[i];
+        break;
       }
     }
-    showAllReviews = !showAllReviews;
+  }
+  
+  function scrollToSection(sectionId: string) {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  onMount(() => {
+    if (browser) {
+      window.addEventListener('scroll', updateActiveSection);
+      return () => window.removeEventListener('scroll', updateActiveSection);
+    }
+  });
+
+  // Amenity icon mapping
+  function amenityIcon(name: string): string {
+    const n = name.toLowerCase();
+    if (/(wifi|internet)/.test(n)) return 'wifi';
+    if (/wash(ing)? machine|laundry/.test(n)) return 'washer';
+    if (/(tv|smart tv|cable tv)/.test(n)) return 'tv';
+    if (/kettle|microwave|oven|stove|toaster|refrigerator|fridge|dishwasher|kitchen/.test(n)) return 'kitchen';
+    if (/shower|tub|bath|hot water|toilet/.test(n)) return 'bath';
+    if (/smoke detector/.test(n)) return 'smoke';
+    if (/carbon monoxide/.test(n)) return 'co';
+    if (/heating|ac|air|hot water/.test(n)) return 'thermo';
+    if (/hangers|iron|linens|towels|shampoo|essentials/.test(n)) return 'closet';
+    if (/garden|backyard/.test(n)) return 'garden';
+    return 'dot';
+  }
+
+  // Icon SVG generator
+  function getIcon(id: string): string {
+    const common = 'width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-600" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+    const circle = '<span class="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0">';
+    const end = '</span>';
+
+    const paths: Record<string, string> = {
+      wifi: `<svg ${common}><path d="M5 12a9 9 0 0 1 14 0"/><path d="M8.5 15.5a5 5 0 0 1 7 0"/><path d="M12 19h.01"/></svg>`,
+      washer: `<svg ${common}><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="5"/></svg>`,
+      tv: `<svg ${common}><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M7 21h10"/></svg>`,
+      kitchen: `<svg ${common}><path d="M4 3h16v6H4z"/><path d="M9 9v12"/><path d="M15 9v12"/></svg>`,
+      bath: `<svg ${common}><path d="M3 13h18"/><path d="M5 13V7a2 2 0 0 1 2-2h1"/><path d="M7 21h10"/><path d="M5 17h14"/></svg>`,
+      smoke: `<svg ${common}><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg>`,
+      co: `<svg ${common}><circle cx="12" cy="12" r="8"/><path d="M9.5 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/><path d="M18 10h-3v4h3"/></svg>`,
+      thermo: `<svg ${common}><path d="M14 14a4 4 0 1 1-6 3.46V5a2 2 0 1 1 4 0v12"/></svg>`,
+      closet: `<svg ${common}><path d="M6 3v18"/><path d="M18 3v18"/><path d="M3 7h18"/></svg>`,
+      garden: `<svg ${common}><path d="M12 22v-7"/><path d="M7 15c0-3 2-5 5-5s5 2 5 5"/><path d="M5 22h14"/></svg>`,
+      dot: `<svg ${common}><circle cx="12" cy="12" r="5"/></svg>`
+    };
+    return circle + (paths[id] || paths.dot) + end;
   }
   
   // Helper functions
@@ -115,28 +244,6 @@
     }
   }
   
-  function getSentimentBadge(sentiment: string): string {
-    const baseClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
-    
-    switch(sentiment?.toLowerCase()) {
-      case 'positive': return `${baseClass} bg-green-50 text-green-700`;
-      case 'negative': return `${baseClass} bg-red-50 text-red-700`;
-      case 'neutral': return `${baseClass} bg-yellow-50 text-yellow-700`;
-      default: return `${baseClass} bg-slate-100 text-slate-700`;
-    }
-  }
-  
-  function getStatusBadge(status: string): string {
-    const baseClass = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
-    
-    switch(status?.toLowerCase()) {
-      case 'approved': return `${baseClass} bg-green-50 text-green-700`;
-      case 'pending': return `${baseClass} bg-yellow-50 text-yellow-700`;
-      case 'rejected': return `${baseClass} bg-red-50 text-red-700`;
-      default: return `${baseClass} bg-slate-100 text-slate-700`;
-    }
-  }
-  
   function getRatingStars(rating: number): string {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 >= 0.5;
@@ -148,7 +255,12 @@
 
 <svelte:head>
   <title>{property.name || 'Property Details'} - Reviews Dashboard</title>
+  {#if property.description}
+    <meta name="description" content={property.description.replace(/\n/g, ' ').slice(0, 160)} />
+  {/if}
 </svelte:head>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <div class="min-h-screen bg-slate-50">
   <!-- Preview Warning Banner -->
@@ -182,14 +294,19 @@
             </svg>
             Back to Properties
           </button>
-          <div class="w-px h-6 bg-slate-300"></div>
-          <div>
-            <h1 class="text-xl font-semibold text-slate-900">{property.name || 'Property Details'}</h1>
-            <p class="text-sm text-slate-500">ID: {property.id}</p>
-          </div>
         </div>
         
         <div class="flex items-center gap-3">
+          <button 
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors hidden lg:flex"
+            on:click={() => sidebarCollapsed = !sidebarCollapsed}
+            title="Toggle booking sidebar (Ctrl+B)"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+            {sidebarCollapsed ? 'Show' : 'Hide'} Booking
+          </button>
           <button 
             class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             on:click={() => goto('/reviews')}
@@ -214,573 +331,722 @@
     </div>
   </div>
 
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {#if data.error}
-      <!-- Error State -->
-      <div class="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <h3 class="text-lg font-medium text-red-900 mb-2">Error Loading Property</h3>
-        <p class="text-red-700 mb-4">{data.error}</p>
-        <button 
-          on:click={() => window.location.reload()}
-          class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Retry
-        </button>
-      </div>
-    {:else}
-      <!-- Main Content -->
-      <div class="space-y-8">
-        <!-- Property Hero Section -->
-        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div class="grid lg:grid-cols-2 gap-8 p-8">
-            <!-- Property Image -->
-            <div class="aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl overflow-hidden">
-              {#if property.photo}
-                <img 
-                  src={property.photo} 
-                  alt={property.name}
-                  class="w-full h-full object-cover"
-                />
-              {:else}
-                <div class="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                  <svg class="w-16 h-16 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h3M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                  </svg>
-                </div>
-              {/if}
-            </div>
+  <!-- Hero Mosaic Gallery -->
+  <div class="relative">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {#if heroImages.length > 0}
+        <div class="grid grid-cols-12 gap-2 md:gap-3 rounded-2xl overflow-hidden">
+          <!-- Large image -->
+          <button 
+            class="col-span-12 md:col-span-8 aspect-[4/3] relative group cursor-pointer bg-transparent border-none p-0" 
+            on:click={() => openGallery(0)}
+            aria-label="Open photo gallery"
+          >
+            <img 
+              src={heroImages[0].url} 
+              alt={heroImages[0].caption || property.name}
+              class="w-full h-full object-cover"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             
-            <!-- Property Details -->
-            <div class="space-y-6">
-              <div>
-                <h2 class="text-2xl font-bold text-slate-900 mb-2">{property.name}</h2>
-                <p class="text-slate-600 flex items-center gap-2">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  </svg>
-                  {property.address}
-                </p>
+            <!-- Overlay info (desktop only) -->
+            <div class="absolute bottom-4 left-4 text-white hidden md:block">
+              <h1 class="text-2xl font-bold mb-1">{property.name}</h1>
+              <div class="flex items-center gap-3 text-sm">
+                <span>{property.hostaway?.location?.city}, {property.hostaway?.location?.country}</span>
+                {#if calculatedRating > 0}
+                  <span>•</span>
+                  <div class="flex items-center gap-1">
+                    <span class="text-yellow-400">★</span>
+                    <span>{calculatedRating.toFixed(1)}</span>
+                    <span>({approvedReviews.length} reviews)</span>
+                  </div>
+                {/if}
               </div>
-              
-              <!-- Key Metrics -->
-              <div class="grid grid-cols-2 gap-4">
-                <div class="bg-slate-50 rounded-xl p-4">
-                  <div class="flex items-center gap-2 mb-2">
-                    <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
-                    </svg>
-                    <span class="text-sm font-medium text-slate-600">Rating</span>
-                  </div>
-                  <div class="text-2xl font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
-                </div>
-                
-                <div class="bg-slate-50 rounded-xl p-4">
-                  <div class="flex items-center gap-2 mb-2">
-                    <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                    </svg>
-                    <span class="text-sm font-medium text-slate-600">Reviews</span>
-                  </div>
-                  <div class="text-2xl font-bold text-slate-900">{approvedReviews.length}</div>
-                  <div class="text-xs text-slate-500">Guest reviews</div>
-                </div>
-              </div>
-              
-              <!-- Property Features -->
-              {#if property.hostaway}
-                <div class="space-y-3">
-                  <h3 class="font-semibold text-slate-900">Property Features</h3>
-                  <div class="grid grid-cols-2 gap-3 text-sm">
-                    {#if property.hostaway.bedroomsNumber !== undefined}
-                      <div class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"/>
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 21v-4a2 2 0 012-2h4a2 2 0 012 2v4"/>
-                        </svg>
-                        <span>{property.hostaway.bedroomsNumber} Bedrooms</span>
-                      </div>
-                    {/if}
-                    {#if property.hostaway.bathroomsNumber !== undefined}
-                      <div class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11"/>
-                        </svg>
-                        <span>{property.hostaway.bathroomsNumber} Bathrooms</span>
-                      </div>
-                    {/if}
-                    {#if property.hostaway.personCapacity}
-                      <div class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                        </svg>
-                        <span>{property.hostaway.personCapacity} Guests</span>
-                      </div>
-                    {/if}
-                    {#if property.hostaway.price}
-                      <div class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
-                        </svg>
-                        <span>{formatPrice(property.hostaway.price)}/night</span>
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-              {/if}
-              
-              <!-- Channels -->
-              {#if property.channel}
-                <div class="space-y-3">
-                  <h3 class="font-semibold text-slate-900">Available on</h3>
-                  <div class="flex flex-wrap gap-2">
-                    <span class={getChannelBadge(property.channel)}>
-                      {property.channel.charAt(0).toUpperCase() + property.channel.slice(1)}
-                    </span>
-                  </div>
-                </div>
-              {/if}
             </div>
-          </div>
+          </button>
           
-          <!-- Property Description -->
-          {#if property.description}
-            <div class="border-t border-slate-200 p-8">
-              <h3 class="font-semibold text-slate-900 mb-3">Description</h3>
-              <p class="text-slate-600 leading-relaxed">{property.description}</p>
-            </div>
-          {/if}
-        </div>
-
-        <!-- Comprehensive Property Information -->
-        {#if property.hostaway}
-          <!-- Image Gallery -->
-          {#if property.hostaway.images && property.hostaway.images.length > 0}
-            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div class="p-8 border-b border-slate-200">
-                <h3 class="text-xl font-semibold text-slate-900">Photo Gallery</h3>
-                <p class="text-slate-600 mt-1">{property.hostaway.images.length} photos</p>
-              </div>
-              <div class="p-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {#each property.hostaway.images as image, index}
-                    <div class="aspect-[4/3] bg-slate-100 rounded-xl overflow-hidden group">
-                      <img 
-                        src={image.url} 
-                        alt={image.caption || `Photo ${index + 1}`}
-                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/if}
-
-          <!-- Amenities & Features -->
-          {#if property.hostaway.amenities && property.hostaway.amenities.length > 0}
-            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div class="p-8 border-b border-slate-200">
-                <h3 class="text-xl font-semibold text-slate-900">Amenities & Features</h3>
-                <p class="text-slate-600 mt-1">{property.hostaway.amenities.length} amenities available</p>
-              </div>
-              <div class="p-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {#each property.hostaway.amenities as amenity}
-                    <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                      <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span class="text-slate-700 text-sm">{amenity.name}</span>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/if}
-
-          <!-- Policies & House Rules -->
-          {#if property.hostaway.policies}
-            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div class="p-8 border-b border-slate-200">
-                <h3 class="text-xl font-semibold text-slate-900">Stay Policies & House Rules</h3>
-                <p class="text-slate-600 mt-1">Important information for your stay</p>
-              </div>
-              <div class="p-8 space-y-8">
-                <!-- Check-in & Check-out -->
-                <div>
-                  <h4 class="font-semibold text-slate-900 mb-4">Check-in & Check-out</h4>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
-                      <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
-                      </svg>
-                      <div>
-                        <div class="font-medium text-slate-900">Check-in time</div>
-                        <div class="text-slate-600">{property.hostaway.policies.checkInTime}</div>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
-                      <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                      </svg>
-                      <div>
-                        <div class="font-medium text-slate-900">Check-out time</div>
-                        <div class="text-slate-600">{property.hostaway.policies.checkOutTime}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- House Rules -->
-                <div>
-                  <h4 class="font-semibold text-slate-900 mb-4">House Rules</h4>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="flex items-center gap-3">
-                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.smokingAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
-                        {#if property.hostaway.policies.smokingAllowed}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                          </svg>
-                        {:else}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                          </svg>
-                        {/if}
-                      </div>
-                      <span class="text-slate-700">{property.hostaway.policies.smokingAllowed ? 'Smoking allowed' : 'No smoking'}</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.petsAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
-                        {#if property.hostaway.policies.petsAllowed}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                          </svg>
-                        {:else}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                          </svg>
-                        {/if}
-                      </div>
-                      <span class="text-slate-700">{property.hostaway.policies.petsAllowed ? 'Pets allowed' : 'No pets'}</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.partiesEventsAllowed ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'} flex items-center justify-center">
-                        {#if property.hostaway.policies.partiesEventsAllowed}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                          </svg>
-                        {:else}
-                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                          </svg>
-                        {/if}
-                      </div>
-                      <span class="text-slate-700">{property.hostaway.policies.partiesEventsAllowed ? 'Parties/events allowed' : 'No parties or events'}</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <div class="w-6 h-6 rounded-full {property.hostaway.policies.securityDepositRequired ? 'bg-yellow-100 text-yellow-600' : 'bg-green-100 text-green-600'} flex items-center justify-center">
-                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
-                        </svg>
-                      </div>
-                      <span class="text-slate-700">{property.hostaway.policies.securityDepositRequired ? 'Security deposit required' : 'No security deposit required'}</span>
-                    </div>
-                  </div>
-                  {#if property.hostaway.policies.houseRules}
-                    <div class="mt-4 p-4 bg-blue-50 rounded-xl">
-                      <div class="font-medium text-blue-900 mb-2">Additional House Rules</div>
-                      <p class="text-blue-800 text-sm">{property.hostaway.policies.houseRules}</p>
+          <!-- Small tiles -->
+          {#if heroImages.length > 1}
+            <div class="col-span-12 md:col-span-4 grid grid-cols-2 gap-2 md:gap-3">
+              {#each heroImages.slice(1, 5) as image, index}
+                <button 
+                  class="aspect-[4/3] relative group cursor-pointer bg-transparent border-none p-0" 
+                  on:click={() => openGallery(index + 1)}
+                  aria-label="View photo {index + 2}"
+                >
+                  <img 
+                    src={image.url} 
+                    alt={image.caption || `Photo ${index + 2}`}
+                    class="w-full h-full object-cover"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                  {#if index === 3 && galleryImages.length > 5}
+                    <div class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <span class="text-white font-medium">+{galleryImages.length - 5} more</span>
                     </div>
                   {/if}
-                </div>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <!-- No images placeholder -->
+        <div class="aspect-[4/3] bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center">
+          <div class="text-center">
+            <svg class="w-16 h-16 text-slate-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <h1 class="text-2xl font-bold text-slate-900 mb-2">{property.name}</h1>
+            <p class="text-slate-600">No photos available</p>
+          </div>
+        </div>
+      {/if}
+    </div>
+  </div>
 
-                <!-- Cancellation Policy -->
-                {#if property.hostaway.policies.cancellationPolicy}
-                  <div>
-                    <h4 class="font-semibold text-slate-900 mb-4">Cancellation Policy</h4>
-                    <div class="p-4 bg-slate-50 rounded-xl">
-                      <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
-                        </svg>
-                        <div>
-                          <div class="font-medium text-slate-900 capitalize">{property.hostaway.policies.cancellationPolicy} cancellation policy</div>
-                          <div class="text-slate-600 text-sm">
-                            {#if property.hostaway.policies.cancellationPolicy === 'flexible'}
-                              Full refund up to 14 days before check-in
-                            {:else if property.hostaway.policies.cancellationPolicy === 'moderate'}
-                              Full refund up to 7 days before check-in
-                            {:else if property.hostaway.policies.cancellationPolicy === 'strict'}
-                              Full refund up to 48 hours before check-in
-                            {:else}
-                              Check the full terms for details
-                            {/if}
-                          </div>
-                        </div>
-                      </div>
+  <!-- Anchor Navigation -->
+  <div class="sticky top-16 bg-white/90 backdrop-blur border-b border-slate-200 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav class="flex space-x-8 overflow-x-auto">
+        {#each [
+          { id: 'overview', label: 'Overview' },
+          { id: 'amenities', label: 'Amenities' },
+          { id: 'reviews', label: 'Reviews' },
+          { id: 'location', label: 'Location' },
+          { id: 'policies', label: 'Policies' }
+        ] as section}
+          <button
+            class="flex-shrink-0 py-4 border-b-2 transition-colors {activeSection === section.id ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}"
+            on:click={() => scrollToSection(section.id)}
+          >
+            {section.label}
+          </button>
+        {/each}
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
+      <!-- Left Column -->
+      <div class="lg:col-span-2 space-y-12 {sidebarCollapsed ? 'lg:col-span-3' : 'lg:col-span-2'} transition-all duration-300">
+        
+        <!-- Overview Section -->
+        <section id="overview" class="scroll-mt-32">
+          <div class="space-y-6">
+            <!-- Mobile title (hidden on desktop since it's in hero overlay) -->
+            <div class="md:hidden">
+              <h1 class="text-2xl font-bold text-slate-900">{property.name}</h1>
+              <div class="flex items-center gap-3 text-slate-600 mt-1">
+                <span>{property.hostaway?.location?.city}, {property.hostaway?.location?.country}</span>
+                {#if calculatedRating > 0}
+                  <span>•</span>
+                  <div class="flex items-center gap-1">
+                    <span class="text-yellow-500">★</span>
+                    <span>{calculatedRating.toFixed(1)}</span>
+                    <span>({approvedReviews.length})</span>
+                  </div>
+                {/if}
+              </div>
+            </div>
+            
+            <!-- Highlights chips -->
+            {#if highlights.length > 0}
+              <div class="flex flex-wrap gap-2">
+                {#each highlights as highlight}
+                  <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-slate-100 text-slate-700">
+                    {highlight}
+                  </span>
+                {/each}
+              </div>
+            {/if}
+            
+            <!-- Description -->
+            {#if property.description}
+              <div class="prose prose-slate max-w-none">
+                <div class="text-slate-700 leading-relaxed {showFullDescription ? '' : 'line-clamp-6'}">
+                  {property.description}
+                </div>
+                {#if property.description.length > 400}
+                  <button
+                    class="text-brand-600 hover:text-brand-700 font-medium mt-2"
+                    on:click={() => showFullDescription = !showFullDescription}
+                  >
+                    {showFullDescription ? 'Show less' : 'Show more'}
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </section>
+
+        <!-- Amenities Section -->
+        {#if Object.keys(amenityGroups).length > 0}
+          <section id="amenities" class="scroll-mt-32">
+            <div class="space-y-6">
+              <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-bold text-slate-900">Amenities</h2>
+                {#if property.hostaway?.amenities && property.hostaway.amenities.length > 9}
+                  <button
+                    class="text-sm font-medium text-brand-600 hover:underline"
+                    on:click={() => amenitiesModalOpen = true}
+                  >
+                    Show all amenities ({property.hostaway.amenities.length})
+                  </button>
+                {/if}
+              </div>
+              
+              <!-- 3×3 Preview Grid -->
+              <div class="grid grid-cols-3 gap-3">
+                {#each (property.hostaway?.amenities || []).slice(0, 9) as amenity}
+                  <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                    {@html getIcon(amenityIcon(amenity.name))}
+                    <span class="text-sm text-slate-700 truncate">{amenity.name}</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          </section>
+        {/if}
+
+        <!-- Reviews Section -->
+        <section id="reviews" class="scroll-mt-32">
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <!-- Reviews Header -->
+            <div class="p-8 border-b border-slate-200">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h2 class="text-2xl font-bold text-slate-900">Guest Reviews</h2>
+                  <p class="text-slate-600 mt-1">
+                    {approvedReviews.length} reviews
+                    {#if calculatedRating > 0}
+                      • {calculatedRating.toFixed(1)} average rating
+                    {/if}
+                  </p>
+                </div>
+                
+                {#if approvedReviews.length > 0}
+                  <div class="flex items-center gap-6">
+                    <div class="text-center">
+                      <div class="text-2xl font-bold text-green-600">{approvedReviews.filter(r => r.rating >= 4).length}</div>
+                      <div class="text-xs text-slate-500">Excellent</div>
+                    </div>
+                    <div class="text-center">
+                      <div class="text-2xl font-bold text-yellow-600">{approvedReviews.filter(r => r.rating === 3).length}</div>
+                      <div class="text-xs text-slate-500">Good</div>
+                    </div>
+                    <div class="text-center">
+                      <div class="text-2xl font-bold text-slate-600">{approvedReviews.filter(r => r.rating <= 2).length}</div>
+                      <div class="text-xs text-slate-500">Fair</div>
                     </div>
                   </div>
                 {/if}
               </div>
             </div>
-          {/if}
+            
+            <!-- Reviews List -->
+            <div class="p-8">
+              {#if approvedReviews.length === 0}
+                <div class="text-center py-12">
+                  <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium text-slate-900 mb-2">No Reviews Yet</h3>
+                  <p class="text-slate-500">This property hasn't received any reviews yet.</p>
+                </div>
+              {:else}
+                <div class="space-y-6">
+                  {#each displayedReviews as review}
+                    <div class="border border-slate-200 rounded-xl p-6">
+                      <!-- Review Header -->
+                      <div class="flex items-start justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                          <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full flex items-center justify-center">
+                            <span class="text-white font-medium text-sm">
+                              {review.guestName ? review.guestName.charAt(0).toUpperCase() : 'G'}
+                            </span>
+                          </div>
+                          <div>
+                            <div class="font-medium text-slate-900">{review.guestName || 'Anonymous Guest'}</div>
+                            <div class="flex items-center gap-2 text-sm text-slate-500">
+                              <span>{formatDate(review.date)}</span>
+                              <span>•</span>
+                              <span class={getChannelBadge(review.channel)}>{review.channel}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-1">
+                          <span class="text-lg">{getRatingStars(review.rating)}</span>
+                          <span class="text-sm font-medium text-slate-900">{review.rating}</span>
+                        </div>
+                      </div>
+                      
+                      <!-- Review Content -->
+                      <div class="text-slate-700 leading-relaxed mb-4">
+                        {review.comment || 'No comment provided.'}
+                      </div>
+                      
+                      <!-- Category Ratings -->
+                      {#if review.categories && Object.keys(review.categories).length > 0}
+                        <div class="border-t border-slate-200 pt-4">
+                          <div class="flex flex-wrap gap-2">
+                            {#each Object.entries(review.categories) as [category, rating]}
+                              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                                {category} {rating}/5
+                              </span>
+                            {/each}
+                          </div>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                  
+                  <!-- View All/Show Less -->
+                  {#if approvedReviews.length > 6}
+                    <div class="flex items-center justify-center pt-6 border-t border-slate-200">
+                      <button
+                        class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl font-medium transition-colors"
+                        on:click={() => showAllReviews = !showAllReviews}
+                      >
+                        {#if showAllReviews}
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                          </svg>
+                          Show Less
+                        {:else}
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                          </svg>
+                          View All Reviews
+                        {/if}
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          </div>
+        </section>
 
-          <!-- Location & Maps -->
-          {#if property.hostaway.location}
+        <!-- Location Section -->
+        {#if property.hostaway?.location}
+          <section id="location" class="scroll-mt-32">
+            <h2 class="text-2xl font-bold text-slate-900 mb-6">Location</h2>
             <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div class="p-8 border-b border-slate-200">
-                <h3 class="text-xl font-semibold text-slate-900">Location</h3>
-                <p class="text-slate-600 mt-1">Exact location for maps integration</p>
-              </div>
-              <div class="p-8">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <!-- Address Details -->
-                  <div class="space-y-4">
-                    <div class="flex items-start gap-3">
-                      <svg class="w-5 h-5 text-slate-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                      </svg>
-                      <div>
-                        <div class="font-medium text-slate-900">Full Address</div>
-                        <div class="text-slate-600 text-sm">{property.hostaway.location.address}</div>
-                      </div>
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-8">
+                <!-- Address Details -->
+                <div class="space-y-4">
+                  <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-slate-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <div>
+                      <div class="font-medium text-slate-900">Address</div>
+                      <div class="text-slate-600">{property.hostaway.location.address || property.address}</div>
+                      <div class="text-slate-600">{property.hostaway.location.city}, {property.hostaway.location.state}, {property.hostaway.location.country}</div>
                     </div>
-                    <div class="flex items-center gap-3">
-                      <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                      </svg>
-                      <div>
-                        <div class="font-medium text-slate-900">Location Details</div>
-                        <div class="text-slate-600 text-sm">{property.hostaway.location.city}, {property.hostaway.location.state}, {property.hostaway.location.country}</div>
-                      </div>
-                    </div>
+                  </div>
+                  {#if property.hostaway.location.lat && property.hostaway.location.lng}
                     <div class="flex items-center gap-3">
                       <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
                       </svg>
                       <div>
                         <div class="font-medium text-slate-900">Coordinates</div>
-                        <div class="text-slate-600 text-sm font-mono">{property.hostaway.location.lat}, {property.hostaway.location.lng}</div>
+                        <div class="text-slate-600 font-mono text-sm">{property.hostaway.location.lat}, {property.hostaway.location.lng}</div>
                       </div>
                     </div>
-                    {#if property.hostaway.location.zipcode}
-                      <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                        </svg>
-                        <div>
-                          <div class="font-medium text-slate-900">Postal Code</div>
-                          <div class="text-slate-600 text-sm">{property.hostaway.location.zipcode}</div>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
+                  {/if}
+                </div>
 
-                  <!-- Map Placeholder -->
-                  <div class="bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl h-64 flex items-center justify-center">
-                    <div class="text-center">
-                      <svg class="w-12 h-12 text-slate-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                      </svg>
-                      <div class="text-slate-600 font-medium">Interactive Map</div>
-                      <div class="text-slate-500 text-sm">Ready for maps integration</div>
-                      <div class="text-xs text-slate-400 mt-2">Lat: {property.hostaway.location.lat}<br/>Lng: {property.hostaway.location.lng}</div>
-                    </div>
+                <!-- Map Placeholder -->
+                <div class="bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl h-64 flex items-center justify-center">
+                  <div class="text-center">
+                    <svg class="w-12 h-12 text-slate-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                    </svg>
+                    <button class="text-brand-600 hover:text-brand-700 font-medium">Open Map</button>
                   </div>
                 </div>
               </div>
             </div>
-          {/if}
+          </section>
         {/if}
 
-        <!-- Reviews Section -->
-        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <!-- Reviews Header -->
-          <div class="p-8 border-b border-slate-200">
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-xl font-semibold text-slate-900">Guest Reviews</h3>
-                <p class="text-slate-600 mt-1">
-                  {approvedReviews.length} reviews
-                  {#if calculatedRating > 0}
-                    • {calculatedRating.toFixed(1)} average rating
-                  {/if}
-                </p>
+        <!-- Policies Section -->
+        {#if property.hostaway?.policies}
+          <section id="policies" class="scroll-mt-32">
+            <h2 class="text-2xl font-bold text-slate-900 mb-6">Policies</h2>
+            <div class="space-y-6">
+              <!-- Check-in/Check-out -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                  <h3 class="font-semibold text-slate-900 mb-3">Check-in</h3>
+                  <p class="text-slate-600">{property.hostaway.policies.checkInTime || '3:00 PM - 9:00 PM'}</p>
+                </div>
+                <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                  <h3 class="font-semibold text-slate-900 mb-3">Check-out</h3>
+                  <p class="text-slate-600">{property.hostaway.policies.checkOutTime || 'Before 11:00 AM'}</p>
+                </div>
               </div>
-              
-              {#if approvedReviews.length > 0}
-                <div class="flex items-center gap-6">
-                  <div class="text-center">
-                    <div class="text-2xl font-bold text-green-600">{approvedReviews.filter(r => r.rating >= 4).length}</div>
-                    <div class="text-xs text-slate-500">Excellent</div>
+
+              <!-- House Rules -->
+              <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                <h3 class="font-semibold text-slate-900 mb-4">House Rules</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div class="text-center p-3 bg-slate-50 rounded-lg">
+                    <div class="text-sm text-slate-600">Smoking</div>
+                    <div class="font-medium text-slate-900">{property.hostaway.policies.smoking ? 'Allowed' : 'Not allowed'}</div>
                   </div>
-                  <div class="text-center">
-                    <div class="text-2xl font-bold text-yellow-600">{approvedReviews.filter(r => r.rating === 3).length}</div>
-                    <div class="text-xs text-slate-500">Good</div>
+                  <div class="text-center p-3 bg-slate-50 rounded-lg">
+                    <div class="text-sm text-slate-600">Pets</div>
+                    <div class="font-medium text-slate-900">{property.hostaway.policies.pets ? 'Allowed' : 'Not allowed'}</div>
                   </div>
-                  <div class="text-center">
-                    <div class="text-2xl font-bold text-slate-600">{approvedReviews.filter(r => r.rating <= 2).length}</div>
-                    <div class="text-xs text-slate-500">Fair</div>
+                  <div class="text-center p-3 bg-slate-50 rounded-lg">
+                    <div class="text-sm text-slate-600">Parties</div>
+                    <div class="font-medium text-slate-900">{property.hostaway.policies.parties ? 'Allowed' : 'Not allowed'}</div>
+                  </div>
+                  <div class="text-center p-3 bg-slate-50 rounded-lg">
+                    <div class="text-sm text-slate-600">Deposit</div>
+                    <div class="font-medium text-slate-900">{property.hostaway.policies.securityDeposit || 'None'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cancellation Policy -->
+              {#if property.hostaway.policies.cancellationPolicy}
+                <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                  <h3 class="font-semibold text-slate-900 mb-3">Cancellation Policy</h3>
+                  <div class="text-slate-600">
+                    {#if property.hostaway.policies.cancellationPolicy === 'flexible'}
+                      Full refund up to 14 days before check-in
+                    {:else if property.hostaway.policies.cancellationPolicy === 'moderate'}
+                      Full refund up to 7 days before check-in
+                    {:else if property.hostaway.policies.cancellationPolicy === 'strict'}
+                      Full refund up to 48 hours before check-in
+                    {:else}
+                      Check the full terms for details
+                    {/if}
                   </div>
                 </div>
               {/if}
             </div>
-          </div>
-          
-          <!-- Review Statistics -->
-          {#if approvedReviews.length > 0}
-            <div class="p-8 border-b border-slate-200 bg-slate-50">
-              <h4 class="font-semibold text-slate-900 mb-4">Average Ratings</h4>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
-                  <div class="text-sm font-medium text-slate-900 mb-1">Overall</div>
-                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+          </section>
+        {/if}
+      </div>
+
+      <!-- Right Column - Sticky Booking Card -->
+      <div class="lg:col-span-1 {sidebarCollapsed ? 'hidden lg:hidden' : 'block'} transition-all duration-300">
+        <div class="lg:sticky lg:top-24">
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-lg relative">
+            <!-- Collapse Toggle Button -->
+            <button
+              class="absolute -left-3 top-4 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-md hover:shadow-lg transition-shadow flex items-center justify-center text-slate-600 hover:text-slate-900 hidden lg:flex"
+              on:click={() => sidebarCollapsed = !sidebarCollapsed}
+              aria-label="Collapse booking sidebar"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+            {#if property.hostaway?.price}
+              <div class="text-2xl font-bold text-slate-900 mb-1">
+                {formatPrice(property.hostaway.price)}
+                <span class="text-base font-normal text-slate-600">/night</span>
+              </div>
+            {/if}
+            
+            <div class="space-y-4 mt-6">
+              <div class="grid grid-cols-2 gap-4">
+                <div class="border border-slate-200 rounded-lg p-3">
+                  <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Check-in</div>
+                  <div class="text-sm text-slate-900 mt-1">Add dates</div>
                 </div>
-                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
-                  <div class="text-sm font-medium text-slate-900 mb-1">Value</div>
-                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
-                </div>
-                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
-                  <div class="text-sm font-medium text-slate-900 mb-1">Location</div>
-                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
-                </div>
-                <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
-                  <div class="text-sm font-medium text-slate-900 mb-1">Cleanliness</div>
-                  <div class="text-lg font-bold text-slate-900">{calculatedRating.toFixed(1)}</div>
-                  <div class="text-xs text-slate-500">{getRatingStars(calculatedRating)}</div>
+                <div class="border border-slate-200 rounded-lg p-3">
+                  <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Check-out</div>
+                  <div class="text-sm text-slate-900 mt-1">Add dates</div>
                 </div>
               </div>
+              
+              <div class="border border-slate-200 rounded-lg p-3">
+                <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Guests</div>
+                <div class="text-sm text-slate-900 mt-1">
+                  {property.hostaway?.personCapacity ? `Up to ${property.hostaway.personCapacity} guests` : '1 guest'}
+                </div>
+              </div>
+              
+              <button class="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-medium py-3 px-4 rounded-xl transition-colors">
+                Check availability
+              </button>
+              
+              <p class="text-xs text-slate-500 text-center">You won't be charged yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsed Sidebar Toggle (Floating Button) -->
+  {#if sidebarCollapsed}
+    <div class="fixed right-4 top-1/2 -translate-y-1/2 z-40 hidden lg:block">
+      <button
+        class="bg-white border border-slate-200 rounded-2xl p-4 shadow-lg hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-2 text-slate-600 hover:text-slate-900"
+        on:click={() => sidebarCollapsed = false}
+        aria-label="Expand booking sidebar"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5l-7 7 7 7"/>
+        </svg>
+        <div class="text-xs font-medium text-center">
+          <div>Book</div>
+          <div>Now</div>
+        </div>
+        {#if property.hostaway?.price}
+          <div class="text-xs font-bold text-brand-600">
+            {formatPrice(property.hostaway.price)}
+          </div>
+        {/if}
+      </button>
+    </div>
+  {/if}
+
+  <!-- Mobile Booking Bottom Sheet -->
+  <div class="lg:hidden">
+    <!-- Trigger Button -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 z-50">
+      <button
+        class="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-medium py-3 px-4 rounded-xl transition-colors flex items-center justify-between"
+        on:click={() => bookingSheetOpen = true}
+      >
+        <div class="text-left">
+          {#if property.hostaway?.price}
+            <div class="font-bold">{formatPrice(property.hostaway.price)}/night</div>
+          {:else}
+            <div class="font-bold">Check availability</div>
+          {/if}
+        </div>
+        <span>Book now</span>
+      </button>
+    </div>
+
+    <!-- Bottom Sheet -->
+    {#if bookingSheetOpen}
+      <div class="fixed inset-0 z-50 lg:hidden">
+        <!-- Backdrop -->
+        <div 
+          class="absolute inset-0 bg-black/50" 
+          role="button"
+          tabindex="0"
+          on:click={() => bookingSheetOpen = false}
+          on:keydown={(e) => e.key === 'Enter' && (bookingSheetOpen = false)}
+          aria-label="Close booking form"
+        ></div>
+        
+        <!-- Sheet -->
+        <div 
+          role="dialog" 
+          aria-modal="true" 
+          aria-labelledby="booking-title"
+          class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto"
+        >
+          <div class="flex items-center justify-between mb-6">
+            <h3 id="booking-title" class="text-xl font-bold text-slate-900">Book your stay</h3>
+            <button 
+              class="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              on:click={() => bookingSheetOpen = false}
+              aria-label="Close booking form"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          
+          {#if property.hostaway?.price}
+            <div class="text-2xl font-bold text-slate-900 mb-6">
+              {formatPrice(property.hostaway.price)}
+              <span class="text-base font-normal text-slate-600">/night</span>
             </div>
           {/if}
           
-          <!-- Reviews List -->
-          <div class="p-8">
-            {#if approvedReviews.length === 0}
-              <div class="text-center py-12">
-                <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                  </svg>
-                </div>
-                <h3 class="text-lg font-medium text-slate-900 mb-2">No Reviews Yet</h3>
-                <p class="text-slate-500">This property hasn't received any reviews yet.</p>
+          <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div class="border border-slate-200 rounded-lg p-3">
+                <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Check-in</div>
+                <div class="text-sm text-slate-900 mt-1">Add dates</div>
               </div>
-            {:else}
-              <div class="space-y-6">
-                {#each displayedReviews as review}
-                  <div class="border border-slate-200 rounded-xl p-6">
-                    <!-- Review Header -->
-                    <div class="flex items-start justify-between mb-4">
-                      <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-600 rounded-full flex items-center justify-center">
-                          <span class="text-white font-medium text-sm">
-                            {review.guestName ? review.guestName.charAt(0).toUpperCase() : 'G'}
-                          </span>
-                        </div>
-                        <div>
-                          <div class="font-medium text-slate-900">{review.guestName || 'Anonymous Guest'}</div>
-                          <div class="flex items-center gap-2 text-sm text-slate-500">
-                            <span>{formatDate(review.date)}</span>
-                            <span>•</span>
-                            <span class={getChannelBadge(review.channel)}>{review.channel}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div class="flex items-center gap-2">
-                        <div class="flex items-center gap-1">
-                          <span class="text-lg">{getRatingStars(review.rating)}</span>
-                          <span class="text-sm font-medium text-slate-900">{review.rating}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Review Content -->
-                    <div class="text-slate-700 leading-relaxed mb-4">
-                      {review.comment || 'No comment provided.'}
-                    </div>
-                    
-                    <!-- Category Ratings -->
-                    {#if review.categories && Object.keys(review.categories).length > 0}
-                      <div class="border-t border-slate-200 pt-4">
-                        <h5 class="text-sm font-medium text-slate-900 mb-2">Category Ratings</h5>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          {#each Object.entries(review.categories) as [category, rating]}
-                            <div class="text-center p-2 bg-slate-50 rounded-lg">
-                              <div class="text-xs text-slate-600 capitalize">{category}</div>
-                              <div class="text-sm font-medium text-slate-900">{rating}/5</div>
-                            </div>
-                          {/each}
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-                
-                <!-- Simple Pagination for Customer View -->
-                {#if approvedReviews.length > 6}
-                  <div class="flex items-center justify-center pt-6 border-t border-slate-200">
-                    <div class="flex items-center gap-3">
-                      {#if !showAllReviews}
-                        <button
-                          on:click={() => showAllReviews = true}
-                          class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl font-medium transition-colors"
-                        >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                          </svg>
-                          View All Reviews
-                        </button>
-                      {:else}
-                        <button
-                          on:click={() => showAllReviews = false}
-                          class="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
-                        >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-                          </svg>
-                          Show Less
-                        </button>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
+              <div class="border border-slate-200 rounded-lg p-3">
+                <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Check-out</div>
+                <div class="text-sm text-slate-900 mt-1">Add dates</div>
               </div>
-            {/if}
+            </div>
+            
+            <div class="border border-slate-200 rounded-lg p-3">
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Guests</div>
+              <div class="text-sm text-slate-900 mt-1">
+                {property.hostaway?.personCapacity ? `Up to ${property.hostaway.personCapacity} guests` : '1 guest'}
+              </div>
+            </div>
+            
+            <button class="w-full bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-medium py-3 px-4 rounded-xl transition-colors">
+              Check availability
+            </button>
+            
+            <p class="text-xs text-slate-500 text-center">You won't be charged yet</p>
           </div>
         </div>
-        
-        <!-- Insights Section -->
-        {#if insights && Object.keys(insights).length > 0}
-          <div class="bg-white rounded-2xl border border-slate-200 p-8">
-            <h3 class="text-xl font-semibold text-slate-900 mb-6">Property Insights</h3>
-            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {#each Object.entries(insights) as [key, value]}
-                <div class="bg-slate-50 rounded-xl p-4">
-                  <div class="text-sm font-medium text-slate-600 capitalize mb-1">
-                    {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
-                  </div>
-                  <div class="text-lg font-semibold text-slate-900">
-                    {typeof value === 'number' ? value.toFixed(1) : value}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
       </div>
     {/if}
   </div>
 </div>
+
+<!-- Amenities Modal -->
+{#if amenitiesModalOpen}
+  <div class="fixed inset-0 z-50">
+    <!-- Backdrop -->
+    <div 
+      class="absolute inset-0 bg-black/50" 
+      role="button"
+      tabindex="0"
+      on:click={() => amenitiesModalOpen = false}
+      on:keydown={(e) => e.key === 'Enter' && (amenitiesModalOpen = false)}
+      aria-label="Close modal"
+    ></div>
+    
+    <!-- Modal -->
+    <div class="absolute inset-x-0 top-8 mx-auto max-w-2xl px-4">
+      <div 
+        role="dialog" 
+        aria-modal="true" 
+        aria-labelledby="amenities-title"
+        class="bg-white rounded-2xl border border-slate-200 shadow-xl p-6 md:p-8"
+      >
+        <div class="flex items-center justify-between mb-6">
+          <h4 id="amenities-title" class="text-lg font-semibold text-slate-900">
+            All amenities • {property.name}
+          </h4>
+          <button 
+            class="p-2 rounded-lg hover:bg-slate-100 transition-colors" 
+            aria-label="Close amenities modal"
+            on:click={() => amenitiesModalOpen = false}
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+          {#each (property.hostaway?.amenities || []) as amenity}
+            <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+              {@html getIcon(amenityIcon(amenity.name))}
+              <span class="text-sm text-slate-700">{amenity.name}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Gallery Modal -->
+{#if galleryOpen}
+  <div class="fixed inset-0 z-50 bg-black/90 flex items-center justify-center">
+    <!-- Close button -->
+    <button 
+      class="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+      on:click={closeGallery}
+      aria-label="Close gallery"
+    >
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+    
+    <!-- Previous button -->
+    {#if galleryImages.length > 1}
+      <button 
+        class="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10"
+        on:click={prevImage}
+        aria-label="Previous image"
+      >
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+    {/if}
+    
+    <!-- Next button -->
+    {#if galleryImages.length > 1}
+      <button 
+        class="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10"
+        on:click={nextImage}
+        aria-label="Next image"
+      >
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+    {/if}
+    
+    <!-- Image -->
+    <div class="max-w-7xl max-h-full mx-auto px-4">
+      <img 
+        src={galleryImages[activeImageIndex]?.url} 
+        alt={galleryImages[activeImageIndex]?.caption || `Photo ${activeImageIndex + 1}`}
+        class="max-w-full max-h-full object-contain"
+      />
+      
+      <!-- Caption -->
+      {#if galleryImages[activeImageIndex]?.caption}
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-center">
+          {galleryImages[activeImageIndex].caption}
+        </div>
+      {/if}
+      
+      <!-- Image counter -->
+      <div class="absolute top-4 left-4 bg-black/70 text-white px-3 py-1 rounded-lg text-sm">
+        {activeImageIndex + 1} / {galleryImages.length}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  :root {
+    /* Primary brand gradient used across CTAs */
+    --brand-500: #0ea5e9;  /* sky-500 */
+    --brand-600: #0284c7;  /* sky-600 */
+    --brand-700: #0369a1;  /* sky-700 */
+
+    /* Neutrals (Slate) */
+    --fg: #0f172a;         /* slate-900 headings */
+    --muted: #64748b;      /* slate-500 body */
+    --line: #e2e8f0;       /* slate-200 borders */
+    --bg: #ffffff;         /* cards */
+    --bg-alt: #f8fafc;     /* page */
+
+    /* Semantic accents */
+    --red-50: #fef2f2;   --red-600: #dc2626;
+    --green-50: #f0fdf4; --green-600: #16a34a;
+    --blue-50: #eff6ff;  --blue-700: #1d4ed8;
+    --amber-50: #fffbeb; --amber-500: #f59e0b;
+    --orange-600: #ea580c;
+  }
+
+  .line-clamp-6 {
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+</style>
