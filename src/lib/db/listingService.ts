@@ -108,10 +108,8 @@ export class ListingService {
         slug: `${slug}-${Date.now()}`, // Ensure uniqueness
         address: data.address || null,
         channel: data.channel,
-        status: data.status || 'active',
-        avgRating: 0,
-        reviewCount: 0,
-      });
+        status: data.status || 'active'
+      } as any);
 
       return id;
     } catch (error) {
@@ -141,7 +139,7 @@ export class ListingService {
           avgRating: avgRating || 0,
           reviewCount: reviewCount || 0,
           updatedAt: sql`CURRENT_TIMESTAMP`,
-        })
+        } as any)
         .where(eq(listings.id, listingId));
 
     } catch (error) {

@@ -344,7 +344,7 @@ export class ReviewService {
         .set({ 
           selectedForWeb: newState,
           updatedAt: sql`CURRENT_TIMESTAMP`
-        })
+        } as any)
         .where(eq(reviews.id, reviewId));
 
       return true;
@@ -362,7 +362,7 @@ export class ReviewService {
         .set({ 
           selectedForWeb: selected ? 1 : 0,
           updatedAt: sql`CURRENT_TIMESTAMP`
-        })
+        } as any)
         .where(sql`${reviews.id} IN (${sql.join(reviewIds.map(id => sql`${id}`), sql`, `)})`);
 
       return result.changes;
@@ -429,7 +429,7 @@ export class ReviewService {
         .set({ 
           note,
           updatedAt: sql`CURRENT_TIMESTAMP`
-        })
+        } as any)
         .where(eq(reviews.id, reviewId));
 
       return true;
@@ -475,7 +475,7 @@ export class ReviewService {
         tagsJson: null,
         createdAt: reviewData.createdAt ? new Date(reviewData.createdAt).toISOString() : new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      } as any);
 
       return reviewId;
     } catch (error) {

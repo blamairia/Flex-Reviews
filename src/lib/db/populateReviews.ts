@@ -155,13 +155,13 @@ export async function populateReviewsDatabase() {
         reviewCount: approvedReviews.length,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      }).onConflictDoUpdate({
+      } as any).onConflictDoUpdate({
         target: listings.id,
         set: {
           avgRating,
           reviewCount: approvedReviews.length,
           updatedAt: new Date().toISOString()
-        }
+        } as any
       });
     }
     

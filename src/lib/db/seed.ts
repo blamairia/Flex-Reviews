@@ -76,7 +76,7 @@ function upsertListing(id: string, name: string, slug: string, address?: string,
       address: address || null,
       channel: channel || 'Airbnb',
       status: status || 'active'
-    }).where(eq(listings.id, id)).run?.();
+    } as any).where(eq(listings.id, id)).run?.();
   }
 }
 

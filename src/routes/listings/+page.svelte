@@ -38,6 +38,7 @@
 
   interface PropertyResponse {
     status: string;
+    message?: string;
     result: {
       properties: Property[];
       pagination: {
@@ -563,8 +564,10 @@
                           alt={property.name}
                           class="w-full h-full object-cover"
                           on:error={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling.style.display = 'flex';
+                            const img = e.currentTarget as HTMLImageElement;
+                            const sibling = img.nextElementSibling as HTMLElement;
+                            img.style.display = 'none';
+                            if (sibling) sibling.style.display = 'flex';
                           }}
                         />
                         <div class="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center" style="display: none;">

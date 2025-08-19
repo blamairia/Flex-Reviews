@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
       const categories = ['Cleanliness', 'Location', 'Communication', 'Check-in', 'Value', 'Amenities'];
 
       heatmapData = properties.map((property: any) => {
-        const categoryScores: any = {};
+        const categoryScores: Record<string, number> = {};
         categories.forEach(category => {
           categoryScores[category] = 3.5 + (Math.random() * 1.5); // Random score 3.5-5.0
         });
@@ -29,7 +29,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
           propertyName: property.name,
           city: property.city,
           country: property.country,
-          avgScore: Object.values(categoryScores).reduce((sum: number, score: any) => sum + score, 0) / categories.length,
+          avgScore: Object.values(categoryScores).reduce((sum: number, score: number) => sum + score, 0) / categories.length,
           categoryScores,
           reviewCount: Math.floor(Math.random() * 50) + 10,
           lastUpdated: new Date().toISOString()

@@ -573,8 +573,8 @@
                 {#each Object.entries(reviewStats.categoryBreakdown) as [category, rating]}
                   <div class="text-center p-3 bg-white rounded-xl border border-slate-200">
                     <div class="text-sm font-medium text-slate-900 capitalize mb-1">{category}</div>
-                    <div class="text-lg font-bold text-slate-900">{rating.toFixed(1)}</div>
-                    <div class="text-xs text-slate-500">{getRatingStars(rating)}</div>
+                    <div class="text-lg font-bold text-slate-900">{(rating as number).toFixed(1)}</div>
+                    <div class="text-xs text-slate-500">{getRatingStars(rating as number)}</div>
                   </div>
                 {/each}
               </div>

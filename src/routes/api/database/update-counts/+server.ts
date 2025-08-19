@@ -36,7 +36,7 @@ export const POST: RequestHandler = async () => {
           reviewCount: approvedReviews, // Only count approved reviews
           avgRating: avgRating,
           updatedAt: new Date().toISOString()
-        })
+        } as any)
         .where(eq(listings.id, listing.id));
       
       console.log(`✅ Updated ${listing.name}: ${approvedReviews} approved reviews (${totalReviews} total), avg rating: ${avgRating.toFixed(1)}`);
