@@ -1,5 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import GoogleMap from '$lib/components/GoogleMap.svelte';
+  import AmenitiesModal from '$lib/components/AmenitiesModal.svelte';
+  import { categorizeAmenities, getAmenityIcon } from '$lib/utils/amenities';
   
   export let data: any;
   
@@ -16,6 +19,7 @@
   }
 
   let showAllReviews = false;
+  let showAmenitiesModal = false;
   
   // Reactive computations  
   $: property = data.property || {};
@@ -24,10 +28,24 @@
   $: insights = data.insights || {};
   $: displayedReviews = showAllReviews ? reviews : reviews.slice(0, 6);
   
+  // Organize amenities into categories
+  $: amenitiesData = property.hostaway?.amenities || property.hostaway?.listingAmenities || [];
+  $: categorizedAmenities = amenitiesData.length > 0 
+    ? categorizeAmenities(amenitiesData) 
+    : [];
+  
+  // Debug log to check amenities data
+  $: if (amenitiesData.length > 0) {
+    console.log('Amenities data:', amenitiesData.slice(0, 3));
+    console.log('Categorized amenities:', categorizedAmenities);
+  }
+  
   // Calculate live rating from actual reviews
   $: calculatedRating = reviews.length > 0 
     ? reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length 
     : property.summary?.avgRating || property.avgRating || 0;
+  
+  $: displayAddress = property.address || property.publicAddress || `${property.city || 'Paris'}, ${property.country || 'France'}`;
   
   $: approvedReviews = reviews.filter(r => r.status === 'approved');
   $: approvalRate = reviews.length > 0 ? (approvedReviews.length / reviews.length) * 100 : 0;
@@ -316,24 +334,89 @@
           {/if}
 
           <!-- Amenities & Features -->
-          {#if property.hostaway.amenities && property.hostaway.amenities.length > 0}
+          {#if categorizedAmenities.length > 0}
             <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <div class="p-8 border-b border-slate-200">
                 <h3 class="text-xl font-semibold text-slate-900">Amenities & Features</h3>
-                <p class="text-slate-600 mt-1">{property.hostaway.amenities.length} amenities available</p>
+                <p class="text-slate-600 mt-1">
+                  {amenitiesData.length} amenities organized by category
+                </p>
               </div>
               <div class="p-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {#each property.hostaway.amenities as amenity}
-                    <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                      <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span class="text-slate-700 text-sm">{amenity.name}</span>
+                <!-- 3x3 Grid Preview -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                  {#each categorizedAmenities.slice(0, 3) as group}
+                    <div class="space-y-3">
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-lg">{group.icon}</span>
+                        <span class="text-sm font-semibold text-slate-900">{group.name}</span>
+                      </div>
+                      {#each group.amenities.slice(0, 3) as amenity}
+                        <div class="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                          <span class="text-sm">{amenity.icon}</span>
+                          <span class="text-slate-700 text-xs font-medium truncate">{amenity.name}</span>
+                        </div>
+                      {/each}
+                      {#if group.amenities.length > 3}
+                        <div class="text-xs text-slate-500 pl-6">
+                          +{group.amenities.length - 3} more
+                        </div>
+                      {/if}
                     </div>
                   {/each}
                 </div>
+                
+                <!-- Expand Button -->
+                <div class="text-center">
+                  <button
+                    on:click={() => showAmenitiesModal = true}
+                    class="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors shadow-sm"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                    </svg>
+                    View All {amenitiesData.length} Amenities
+                  </button>
+                </div>
+              </div>
+            </div>
+          {:else if amenitiesData.length > 0}
+            <!-- Fallback: Show basic amenities list if categorization fails -->
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-900">Amenities & Features</h3>
+                <p class="text-slate-600 mt-1">{amenitiesData.length} amenities available</p>
+              </div>
+              <div class="p-8">
+                <!-- 3x3 Grid Preview for uncategorized -->
+                <div class="grid grid-cols-3 gap-3 mb-6">
+                  {#each amenitiesData.slice(0, 9) as amenity}
+                    <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
+                      <span class="text-lg">{getAmenityIcon(amenity.amenityId)}</span>
+                      <span class="text-slate-700 text-sm font-medium truncate">{amenity.name || amenity.amenityName || 'Unknown'}</span>
+                    </div>
+                  {/each}
+                </div>
+                
+                {#if amenitiesData.length > 9}
+                  <div class="text-center">
+                    <button
+                      on:click={() => showAmenitiesModal = true}
+                      class="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors shadow-sm"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                      </svg>
+                      View All {amenitiesData.length} Amenities
+                    </button>
+                  </div>
+                {/if}
               </div>
             </div>
           {/if}
+
+          <!-- Location & Map -->
+          <GoogleMap {property} />
 
           <!-- Policies & House Rules -->
           {#if property.hostaway.policies}
@@ -704,3 +787,10 @@
     {/if}
   </div>
 </div>
+
+<!-- Amenities Modal -->
+<AmenitiesModal 
+  bind:isOpen={showAmenitiesModal} 
+  {categorizedAmenities}
+  on:close={() => showAmenitiesModal = false}
+/>

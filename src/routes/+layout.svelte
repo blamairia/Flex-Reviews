@@ -7,11 +7,14 @@
   $: title = getTitleFromPath($page.url.pathname);
   
   function getTitleFromPath(path: string): string {
-    if (path === '/dashboard') return 'Dashboard';
-    if (path === '/reviews') return 'Reviews';
-    if (path.startsWith('/listings')) return 'Listings';
-    if (path.startsWith('/preview')) return 'Preview';
-    if (path === '/settings') return 'Settings';
+    if (path === '/' || path === '/dashboard') return 'Dashboard';
+    if (path === '/reviews' || path.startsWith('/reviews/')) return 'Reviews';
+    if (path === '/listings' || path.startsWith('/listings/')) return 'Listings';
+    if (path.startsWith('/property/')) return 'Property Details';
+    if (path.startsWith('/preview/')) return 'Preview';
+    if (path.startsWith('/google-test')) return 'Google APIs Test';
+    if (path.startsWith('/hostaway-test')) return 'Hostaway Test';
+    if (path === '/settings' || path.startsWith('/settings/')) return 'Settings';
     return 'Dashboard';
   }
 </script>

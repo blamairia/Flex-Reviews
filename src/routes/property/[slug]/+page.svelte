@@ -3,6 +3,9 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import GoogleMap from '$lib/components/GoogleMap.svelte';
+  import AmenitiesModal from '$lib/components/AmenitiesModal.svelte';
+  import { categorizeAmenities } from '$lib/utils/amenities';
   
   export let data: any;
   
@@ -26,6 +29,7 @@
   let showFullDescription = false;
   let activeSection = 'overview';
   let amenitiesModalOpen = false;
+  let showAmenitiesModal = false;
   let sidebarCollapsed = false;
   
   // Reactive computations  
@@ -33,6 +37,9 @@
   $: reviews = data.reviews?.reviews || [];
   $: pagination = data.reviews?.pagination || { total: 0, limit: 25, offset: 0 };
   $: insights = data.insights || {};
+  
+  // New amenities categorization
+  $: categorizedAmenities = categorizeAmenities(property.hostaway?.amenities || []);
   
   // Filter reviews by approval status for customer preview
   $: approvedReviews = reviews.filter(r => r.status === 'approved');
@@ -138,8 +145,8 @@
           nextImage();
           break;
       }
-    } else if (amenitiesModalOpen && event.key === 'Escape') {
-      amenitiesModalOpen = false;
+    } else if (showAmenitiesModal && event.key === 'Escape') {
+      showAmenitiesModal = false;
     } else if (event.key === 'b' && event.ctrlKey) {
       // Ctrl+B to toggle sidebar
       event.preventDefault();
@@ -484,29 +491,43 @@
         </section>
 
         <!-- Amenities Section -->
-        {#if Object.keys(amenityGroups).length > 0}
+        {#if property.hostaway?.amenities && property.hostaway.amenities.length > 0}
           <section id="amenities" class="scroll-mt-32">
-            <div class="space-y-6">
-              <div class="flex items-center justify-between">
-                <h2 class="text-2xl font-bold text-slate-900">Amenities</h2>
-                {#if property.hostaway?.amenities && property.hostaway.amenities.length > 9}
-                  <button
-                    class="text-sm font-medium text-brand-600 hover:underline"
-                    on:click={() => amenitiesModalOpen = true}
-                  >
-                    Show all amenities ({property.hostaway.amenities.length})
-                  </button>
-                {/if}
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div class="p-8 border-b border-slate-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Amenities</h2>
+                    <p class="text-slate-600 mt-1">{property.hostaway.amenities.length} amenities available</p>
+                  </div>
+                  {#if property.hostaway.amenities.length > 9}
+                    <button
+                      class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors"
+                      on:click={() => showAmenitiesModal = true}
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                      </svg>
+                      Show All Amenities
+                    </button>
+                  {/if}
+                </div>
               </div>
               
-              <!-- 3×3 Preview Grid -->
-              <div class="grid grid-cols-3 gap-3">
-                {#each (property.hostaway?.amenities || []).slice(0, 9) as amenity}
-                  <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    {@html getIcon(amenityIcon(amenity.name))}
-                    <span class="text-sm text-slate-700 truncate">{amenity.name}</span>
-                  </div>
-                {/each}
+              <div class="p-8">
+                <!-- 3×3 Preview Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {#each (property.hostaway?.amenities || []).slice(0, 9) as amenity}
+                    <div class="flex items-center gap-3 p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                      <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-xl shadow-sm flex-shrink-0">
+                        {@html getIcon(amenityIcon(amenity.name))}
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium text-slate-900 truncate">{amenity.name}</div>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
               </div>
             </div>
           </section>
@@ -637,46 +658,7 @@
         <!-- Location Section -->
         {#if property.hostaway?.location}
           <section id="location" class="scroll-mt-32">
-            <h2 class="text-2xl font-bold text-slate-900 mb-6">Location</h2>
-            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-8">
-                <!-- Address Details -->
-                <div class="space-y-4">
-                  <div class="flex items-start gap-3">
-                    <svg class="w-5 h-5 text-slate-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    <div>
-                      <div class="font-medium text-slate-900">Address</div>
-                      <div class="text-slate-600">{property.hostaway.location.address || property.address}</div>
-                      <div class="text-slate-600">{property.hostaway.location.city}, {property.hostaway.location.state}, {property.hostaway.location.country}</div>
-                    </div>
-                  </div>
-                  {#if property.hostaway.location.lat && property.hostaway.location.lng}
-                    <div class="flex items-center gap-3">
-                      <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                      </svg>
-                      <div>
-                        <div class="font-medium text-slate-900">Coordinates</div>
-                        <div class="text-slate-600 font-mono text-sm">{property.hostaway.location.lat}, {property.hostaway.location.lng}</div>
-                      </div>
-                    </div>
-                  {/if}
-                </div>
-
-                <!-- Map Placeholder -->
-                <div class="bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl h-64 flex items-center justify-center">
-                  <div class="text-center">
-                    <svg class="w-12 h-12 text-slate-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                    </svg>
-                    <button class="text-brand-600 hover:text-brand-700 font-medium">Open Map</button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <GoogleMap {property} />
           </section>
         {/if}
 
@@ -908,54 +890,12 @@
   </div>
 </div>
 
-<!-- Amenities Modal -->
-{#if amenitiesModalOpen}
-  <div class="fixed inset-0 z-50">
-    <!-- Backdrop -->
-    <div 
-      class="absolute inset-0 bg-black/50" 
-      role="button"
-      tabindex="0"
-      on:click={() => amenitiesModalOpen = false}
-      on:keydown={(e) => e.key === 'Enter' && (amenitiesModalOpen = false)}
-      aria-label="Close modal"
-    ></div>
-    
-    <!-- Modal -->
-    <div class="absolute inset-x-0 top-8 mx-auto max-w-2xl px-4">
-      <div 
-        role="dialog" 
-        aria-modal="true" 
-        aria-labelledby="amenities-title"
-        class="bg-white rounded-2xl border border-slate-200 shadow-xl p-6 md:p-8"
-      >
-        <div class="flex items-center justify-between mb-6">
-          <h4 id="amenities-title" class="text-lg font-semibold text-slate-900">
-            All amenities • {property.name}
-          </h4>
-          <button 
-            class="p-2 rounded-lg hover:bg-slate-100 transition-colors" 
-            aria-label="Close amenities modal"
-            on:click={() => amenitiesModalOpen = false}
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-        
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
-          {#each (property.hostaway?.amenities || []) as amenity}
-            <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-              {@html getIcon(amenityIcon(amenity.name))}
-              <span class="text-sm text-slate-700">{amenity.name}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<!-- New Amenities Modal -->
+<AmenitiesModal 
+  bind:isOpen={showAmenitiesModal} 
+  {categorizedAmenities}
+  on:close={() => showAmenitiesModal = false}
+/>
 
 <!-- Gallery Modal -->
 {#if galleryOpen}
@@ -1019,6 +959,13 @@
     </div>
   </div>
 {/if}
+
+<!-- Amenities Modal -->
+<AmenitiesModal 
+  bind:isOpen={showAmenitiesModal} 
+  {categorizedAmenities}
+  on:close={() => showAmenitiesModal = false}
+/>
 
 <style>
   :root {
