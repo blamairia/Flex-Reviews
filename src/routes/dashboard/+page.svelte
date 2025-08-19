@@ -13,7 +13,7 @@
   let anomalies: any[] = [];
   let channelTrends: any[] = [];
   let loading = false;
-  let selectedTimeRange = '30d';
+  let selectedTimeRange = 'all';
   let selectedAnalysisType = 'performance';
   
   // Enhanced data structures for trend analysis
@@ -27,12 +27,19 @@
   async function refreshStats() {
     loading = true;
     try {
+      const dateRange = getDateRange(selectedTimeRange);
+      
+      // Build URL parameters
+      const params = new URLSearchParams();
+      if (dateRange.from) params.set('dateFrom', dateRange.from);
+      if (dateRange.to) params.set('dateTo', dateRange.to);
+      
       // Fetch core stats
       const [statsRes, heatmapRes, anomaliesRes, channelRes] = await Promise.all([
-        fetch('/api/reviews/stats'),
-        fetch('/api/dashboard/heatmap'),
-        fetch(`/api/trends/anomalies?dateFrom=${getDateRange(selectedTimeRange).from}&dateTo=${getDateRange(selectedTimeRange).to}`),
-        fetch(`/api/trends/channels?dateFrom=${getDateRange(selectedTimeRange).from}&dateTo=${getDateRange(selectedTimeRange).to}&groupBy=week`)
+        fetch(`/api/reviews/stats?${params.toString()}`),
+        fetch(`/api/dashboard/heatmap?${params.toString()}`),
+        fetch(`/api/trends/anomalies?${params.toString()}`),
+        fetch(`/api/trends/channels?${params.toString()}&groupBy=week`)
       ]);
       
       const [newStats, newHeatmap, newAnomalies, newChannelTrends] = await Promise.all([
@@ -59,13 +66,16 @@
   function getDateRange(range: string) {
     const now = new Date();
     const to = now.toISOString().split('T')[0];
-    let from: string;
+    let from: string | null = null;
     
     switch(range) {
       case '7d': from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; break;
       case '30d': from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; break;
       case '90d': from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; break;
-      default: from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      case 'all': 
+      default: 
+        // No date filter - get all data
+        return { from: null, to: null };
     }
     
     return { from, to };
@@ -161,6 +171,7 @@
       on:change={refreshStats}
       class="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm"
     >
+      <option value="all">All Time</option>
       <option value="7d">Last 7 days</option>
       <option value="30d">Last 30 days</option>
       <option value="90d">Last 90 days</option>
