@@ -9,3 +9,5 @@ PROJECT_DEVELOPMENT_PLAN.md
 data/*.db-journal
 Flex Living - dev assessment.md
 .gitignore
+.env.vercel
+vercel.json

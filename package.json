@@ -5,15 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "svelte-kit build",
-    "preview": "svelte-kit preview",
+    "build": "vite build",
+    "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "format": "prettier -w .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx src/lib/db/seed.ts"
+    "db:seed": "tsx src/lib/db/seed.ts",
+    "vercel:build": "npm run build"
   },
   "dependencies": {
     "@skeletonlabs/skeleton": "*",
@@ -28,12 +29,13 @@
     "postcss": "*",
     "svelte": "*",
     "svelte-apexcharts": "^1.0.2",
-    "tailwindcss": "*",
+    "tailwindcss": "^3.4.17",
     "vite": "*"
   },
   "devDependencies": {
     "@skeletonlabs/tw-plugin": "*",
     "@sveltejs/adapter-auto": "*",
+    "@sveltejs/adapter-vercel": "^5.10.2",
     "@types/better-sqlite3": "*",
     "@types/node": "*",
     "drizzle-kit": "*",
