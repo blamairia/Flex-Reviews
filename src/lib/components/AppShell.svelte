@@ -108,6 +108,18 @@
         {/if}
       </a>
       <a 
+        href="/google-test" 
+        class="flex items-center {sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} py-2 rounded-lg transition-colors {isActive('/google-test') ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-100'}"
+        title={sidebarCollapsed ? 'Google APIs Test' : ''}
+      >
+        <svg class="w-[18px] h-[18px] {sidebarCollapsed ? '' : 'shrink-0'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+        </svg>
+        {#if !sidebarCollapsed}
+          <span>Google APIs Test</span>
+        {/if}
+      </a>
+      <a 
         href="/settings" 
         class="flex items-center {sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} py-2 rounded-lg transition-colors {isActive('/settings') ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-100'}"
         title={sidebarCollapsed ? 'Settings' : ''}
@@ -180,6 +192,16 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
             </svg>
             Listings
+          </a>
+          <a 
+            href="/google-test"
+            on:click={toggleMobileMenu}
+            class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors {isActive('/google-test') ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-100'}"
+          >
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+            </svg>
+            Google APIs Test
           </a>
           <a 
             href="/settings"

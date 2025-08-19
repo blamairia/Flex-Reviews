@@ -1,8 +1,16 @@
+import 'dotenv/config';
+
 // Environment variables for Hostaway API
-const HOSTAWAY_ACCOUNT_ID = '61148';
-const HOSTAWAY_CLIENT_SECRET = 'f94377ebbbb479490bb3ec364649168dc443dda2e4830facaf5de2e74ccc9152';
-const HOSTAWAY_BASE_URL = 'https://api.hostaway.com/v1';
+// These MUST be loaded from environment variables - never hardcode secrets!
+const HOSTAWAY_ACCOUNT_ID = process.env.HOSTAWAY_ACCOUNT_ID || '';
+const HOSTAWAY_CLIENT_SECRET = process.env.HOSTAWAY_API_KEY || '';
+const HOSTAWAY_BASE_URL = process.env.HOSTAWAY_BASE_URL || 'https://api.hostaway.com/v1';
 const HOSTAWAY_ACCESS_TOKEN = '';
+
+// Validate required environment variables
+if (!HOSTAWAY_ACCOUNT_ID || !HOSTAWAY_CLIENT_SECRET) {
+  console.warn('⚠️ Missing required Hostaway environment variables. Please check your .env.local file.');
+}
 
 export interface HostawayListing {
   id: number;
@@ -94,6 +102,11 @@ export class HostawayService {
    */
   static async authenticate(): Promise<string> {
     try {
+      // Validate required credentials
+      if (!this.accountId || !this.clientSecret) {
+        throw new Error('Missing required Hostaway credentials. Please check HOSTAWAY_ACCOUNT_ID and HOSTAWAY_API_KEY environment variables.');
+      }
+
       const response = await fetch(`${this.baseUrl}/accessTokens`, {
         method: 'POST',
         headers: {

@@ -49,7 +49,7 @@
   let totalPages = 0; // Total number of pages
 
   // Search debounce
-  let searchTimeout: number;
+  let searchTimeout: ReturnType<typeof setTimeout>;
 
   // Utility functions
   function parseCategories(json: string | null): string[] {
@@ -478,7 +478,7 @@
 
           <!-- Rating Range -->
           <div class="flex items-center gap-2">
-            <label class="text-sm text-slate-600">Rating:</label>
+            <span class="text-sm text-slate-600">Rating:</span>
             <input
               type="range"
               min="0"
@@ -486,6 +486,7 @@
               bind:value={ratingMin}
               on:change={updateURL}
               class="w-20"
+              aria-label="Minimum rating"
             />
             <span class="text-sm text-slate-600">{ratingMin}-{ratingMax}</span>
             <input
@@ -495,6 +496,7 @@
               bind:value={ratingMax}
               on:change={updateURL}
               class="w-20"
+              aria-label="Maximum rating"
             />
           </div>
 
@@ -849,7 +851,14 @@
 <!-- Review Detail Drawer -->
 {#if showDrawer && selectedReview}
   <div class="fixed inset-0 z-50 overflow-hidden">
-    <div class="absolute inset-0 bg-black bg-opacity-50" on:click={closeDrawer}></div>
+    <div 
+      class="absolute inset-0 bg-black bg-opacity-50" 
+      on:click={closeDrawer}
+      on:keydown={(e) => e.key === 'Escape' && closeDrawer()}
+      role="button"
+      tabindex="0"
+      aria-label="Close drawer"
+    ></div>
     <div class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
       <div class="flex flex-col h-full">
         <!-- Header -->
@@ -886,7 +895,7 @@
 
           <!-- Property Link -->
           <div>
-            <label class="block text-sm font-medium text-slate-700 mb-1">Property</label>
+            <div class="block text-sm font-medium text-slate-700 mb-1">Property</div>
             <button
               on:click={() => window.open(`/listings/${selectedReview.listingId}`, '_blank')}
               class="text-brand-600 hover:text-brand-700 hover:underline font-medium"
@@ -898,7 +907,7 @@
           <!-- Rating -->
           {#if selectedReview.overallRating}
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Rating</label>
+              <div class="block text-sm font-medium text-slate-700 mb-1">Rating</div>
               <div class="flex items-center gap-2">
                 <span class="text-yellow-400">{getRatingStars(selectedReview.overallRating)}</span>
                 <span class="text-sm text-slate-600">{selectedReview.overallRating}/5</span>
@@ -909,7 +918,7 @@
           <!-- Review Text -->
           {#if selectedReview.publicReview}
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-2">Review</label>
+              <div class="block text-sm font-medium text-slate-700 mb-2">Review</div>
               <div class="bg-slate-50 rounded-lg p-4">
                 <p class="text-slate-700 leading-relaxed">{selectedReview.publicReview}</p>
               </div>
@@ -919,7 +928,7 @@
           <!-- Categories -->
           {#if selectedReview.categoriesJson}
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-2">Categories</label>
+              <div class="block text-sm font-medium text-slate-700 mb-2">Categories</div>
               <div class="flex flex-wrap gap-2">
                 {#each parseCategories(selectedReview.categoriesJson) as category}
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -993,6 +1002,7 @@
         <button
           on:click={() => showToastNotification = false}
           class="text-slate-400 hover:text-slate-600"
+          aria-label="Close notification"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
